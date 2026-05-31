@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
+import 'package:sensors_plus/sensors_plus.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   runApp(const SitWellApp());
 }
 
@@ -42,8 +47,6 @@ class PostureIconPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     double s = size.width / 160;
-
-    // คนนั่งตรง (สีเขียว)
     double gx = 50 * s, gy = 15 * s;
     canvas.drawCircle(Offset(gx, gy + 10 * s), 9 * s,
         Paint()..color = const Color(0xFF43A047)..style = PaintingStyle.fill);
@@ -54,7 +57,6 @@ class PostureIconPainter extends CustomPainter {
     canvas.drawLine(Offset(gx, gy + 30 * s), Offset(gx - 18 * s, gy + 48 * s), greenPaint);
     canvas.drawLine(Offset(gx, gy + 30 * s), Offset(gx + 18 * s, gy + 48 * s), greenPaint);
 
-    // คนนั่งโน้มตัว (สีแดง)
     double rx = 105 * s, ry = 15 * s;
     canvas.drawCircle(Offset(rx + 14 * s, ry + 18 * s), 9 * s,
         Paint()..color = const Color(0xFFE53935)..style = PaintingStyle.fill);
@@ -194,10 +196,13 @@ class BleService {
     List<DiscoveredDevice> found = [];
     _scanSub?.cancel();
     _scanSub = _ble.scanForDevices(
-      withServices: [Uuid.parse(_serviceUuid)],
+      withServices: [],
       scanMode: ScanMode.lowLatency,
     ).listen((device) {
-      if (!found.any((d) => d.id == device.id)) found.add(device);
+      if (device.name.contains('SitWell') &&
+          !found.any((d) => d.id == device.id)) {
+        found.add(device);
+      }
     });
     await Future.delayed(const Duration(seconds: 5));
     _scanSub?.cancel();
@@ -262,7 +267,34 @@ class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
   final BleService _ble = BleService();
   bool _bleConnected = false;
-  int _batteryLevel = 78;
+  int _batteryLevel = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _initForegroundTask();
+  }
+
+  void _initForegroundTask() {
+    FlutterForegroundTask.init(
+      androidNotificationOptions: AndroidNotificationOptions(
+        channelId: 'sitwell_channel',
+        channelName: 'SitWell Monitor',
+        channelDescription: 'กำลังตรวจจับท่านั่ง',
+        channelImportance: NotificationChannelImportance.HIGH,
+        priority: NotificationPriority.HIGH,
+      ),
+      iosNotificationOptions: const IOSNotificationOptions(
+        showNotification: true,
+        playSound: true,
+      ),
+      foregroundTaskOptions: ForegroundTaskOptions(
+        eventAction: ForegroundTaskEventAction.repeat(5000),
+        autoRunOnBoot: false,
+        allowWakeLock: true,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -362,10 +394,10 @@ class _BleConnectSheetState extends State<BleConnectSheet> {
       setState(() {
         _results = results;
         _scanning = false;
-        _status = results.isEmpty ? 'ไม่พบอุปกรณ์ SitWell' : 'พบ ${results.length} อุปกรณ์';
+        _status = results.isEmpty ? 'ไม่พบอุปกรณ์ SitWell — ตรวจสอบว่าเปิดอุปกรณ์แล้ว' : 'พบ ${results.length} อุปกรณ์';
       });
     } catch (e) {
-      setState(() { _scanning = false; _status = 'เกิดข้อผิดพลาด'; });
+      setState(() { _scanning = false; _status = 'เกิดข้อผิดพลาด: $e'; });
     }
   }
 
@@ -396,7 +428,11 @@ class _BleConnectSheetState extends State<BleConnectSheet> {
         const SizedBox(height: 16),
         if (widget.ble.isConnected)
           ElevatedButton.icon(
-            onPressed: () async { await widget.ble.disconnect(); widget.onDisconnected(); Navigator.pop(context); },
+            onPressed: () async {
+              await widget.ble.disconnect();
+              widget.onDisconnected();
+              if (mounted) Navigator.pop(context);
+            },
             icon: const Icon(Icons.bluetooth_disabled, color: Colors.white),
             label: const Text('ตัดการเชื่อมต่อ', style: TextStyle(color: Colors.white)),
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE53935),
@@ -453,61 +489,102 @@ class _MonitorPageState extends State<MonitorPage> {
   int _badPostureCount = 0;
   Timer? _timer;
   StreamSubscription? _dataSub;
+  StreamSubscription? _sensorSub;
+
   double _accelX = 0, _accelY = 0, _accelZ = 0;
   double _tiltAngle = 0;
   String _postureStatus = 'กดเริ่มเพื่อเริ่มตรวจจับ';
   Color _postureColor = Colors.white54;
+  double _tiltThreshold = 30.0;
 
   @override
   void initState() {
     super.initState();
-    _dataSub = widget.ble.dataStream.listen(_onSensorData);
+    _dataSub = widget.ble.dataStream.listen(_onBleData);
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     _dataSub?.cancel();
+    _sensorSub?.cancel();
     super.dispose();
   }
 
-  void _onSensorData(String raw) {
+  void _onBleData(String raw) {
     try {
       final parts = raw.split(',');
       double x = double.parse(parts[0].split(':')[1]);
       double y = double.parse(parts[1].split(':')[1]);
       double z = double.parse(parts[2].split(':')[1]);
       double tilt = (asin(x.clamp(-1.0, 1.0)) * 180 / pi).abs();
+      if (!mounted) return;
       setState(() {
         _accelX = x; _accelY = y; _accelZ = z; _tiltAngle = tilt;
-        if (_isActive && tilt > 30) {
-          _postureStatus = 'เอียงผิดท่า!';
-          _postureColor = const Color(0xFFE53935);
-          _badPostureCount++;
-          widget.ble.sendAlert();
-        } else if (_isActive) {
-          _postureStatus = 'ท่านั่งดี';
-          _postureColor = const Color(0xFF43A047);
-        }
+        _checkPosture(tilt);
       });
     } catch (_) {}
+  }
+
+  void _checkPosture(double tilt) {
+    if (!_isActive) return;
+    if (tilt > _tiltThreshold) {
+      _postureStatus = 'เอียงผิดท่า!';
+      _postureColor = const Color(0xFFE53935);
+      _badPostureCount++;
+      widget.ble.sendAlert();
+      HapticFeedback.vibrate();
+    } else {
+      _postureStatus = 'ท่านั่งดี ✓';
+      _postureColor = const Color(0xFF43A047);
+    }
+  }
+
+  void _startPhoneSensor() {
+    _sensorSub?.cancel();
+    _sensorSub = accelerometerEventStream().listen((event) {
+      double tilt = (asin((event.x / 9.8).clamp(-1.0, 1.0)) * 180 / pi).abs();
+      if (!mounted) return;
+      setState(() {
+        _accelX = event.x / 9.8;
+        _accelY = event.y / 9.8;
+        _accelZ = event.z / 9.8;
+        _tiltAngle = tilt;
+        _checkPosture(tilt);
+      });
+    });
   }
 
   void _toggleMonitoring() {
     setState(() {
       _isActive = !_isActive;
       if (_isActive) {
-        _postureStatus = 'กำลังตรวจจับท่านั่ง...';
+        _postureStatus = 'กำลังตรวจจับ...';
         _postureColor = const Color(0xFF43A047);
+        _sessionMinutes = 0;
+        _badPostureCount = 0;
         _timer = Timer.periodic(const Duration(seconds: 60), (_) {
           setState(() => _sessionMinutes++);
         });
+        if (!_useDevice) _startPhoneSensor();
+        _startForegroundTask();
       } else {
         _postureStatus = 'หยุดตรวจจับแล้ว';
         _postureColor = Colors.white54;
         _timer?.cancel();
+        _sensorSub?.cancel();
+        FlutterForegroundTask.stopService();
       }
     });
+  }
+
+  void _startForegroundTask() async {
+    await FlutterForegroundTask.requestPermissionForAndroid();
+    await FlutterForegroundTask.startService(
+      serviceId: 256,
+      notificationTitle: 'SitWell กำลังทำงาน',
+      notificationText: 'กำลังตรวจจับท่านั่งของคุณ',
+    );
   }
 
   IconData _batteryIcon(int level) {
@@ -539,10 +616,10 @@ class _MonitorPageState extends State<MonitorPage> {
             const SizedBox(height: 12),
             Row(children: [
               Expanded(child: _modeButton(Icons.smartphone, 'เซ็นเซอร์\nมือถือ', !_useDevice,
-                  () => setState(() => _useDevice = false))),
+                  () => setState(() { _useDevice = false; if (_isActive) _startPhoneSensor(); }))),
               const SizedBox(width: 12),
               Expanded(child: _modeButton(Icons.devices_other, 'อุปกรณ์\nSitWell', _useDevice,
-                  () => setState(() => _useDevice = true))),
+                  () => setState(() { _useDevice = true; _sensorSub?.cancel(); }))),
             ]),
             if (_useDevice) ...[
               const SizedBox(height: 12),
@@ -569,8 +646,8 @@ class _MonitorPageState extends State<MonitorPage> {
                     : const Row(children: [
                         Icon(Icons.bluetooth_disabled, color: Colors.white38, size: 20),
                         SizedBox(width: 8),
-                        Text('ยังไม่ได้เชื่อมต่อ — กดไอคอนบลูทูธด้านบน',
-                            style: TextStyle(color: Colors.white38, fontSize: 12)),
+                        Expanded(child: Text('ยังไม่ได้เชื่อมต่อ — กดไอคอนบลูทูธด้านบน',
+                            style: TextStyle(color: Colors.white38, fontSize: 12))),
                       ]),
               ),
               if (widget.bleConnected) ...[
@@ -610,13 +687,10 @@ class _MonitorPageState extends State<MonitorPage> {
             border: Border.all(color: _isActive ? _postureColor : Colors.transparent, width: 2),
           ),
           child: Column(children: [
-            SizedBox(
-              width: 100, height: 70,
-              child: CustomPaint(painter: PostureIconPainter()),
-            ),
+            SizedBox(width: 100, height: 70,
+                child: CustomPaint(painter: PostureIconPainter())),
             const SizedBox(height: 16),
-            Text(_postureStatus,
-                style: TextStyle(color: _postureColor, fontSize: 18)),
+            Text(_postureStatus, style: TextStyle(color: _postureColor, fontSize: 18)),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _toggleMonitoring,
@@ -694,8 +768,8 @@ class StatsPage extends StatefulWidget {
 
 class _StatsPageState extends State<StatsPage> {
   int _tabIndex = 0;
-  final List<double> _dayData = [0.5, 1.2, 0.8, 2.0, 1.5, 0.3, 1.8];
-  final List<int> _badData = [2, 5, 3, 8, 4, 1, 6];
+  final List<double> _dayData = [0, 0, 0, 0, 0, 0, 0];
+  final List<int> _badData = [0, 0, 0, 0, 0, 0, 0];
   final List<String> _labels = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
 
   @override
@@ -728,9 +802,9 @@ class _StatsPageState extends State<StatsPage> {
         ),
         const SizedBox(height: 16),
         Row(children: [
-          Expanded(child: _summaryCard('ชั่วโมงอ่าน', '8.1 ชม.', Icons.menu_book, const Color(0xFF43A047))),
+          Expanded(child: _summaryCard('ชั่วโมงอ่าน', '0 ชม.', Icons.menu_book, const Color(0xFF43A047))),
           const SizedBox(width: 12),
-          Expanded(child: _summaryCard('เอียงผิดท่า', '29 ครั้ง', Icons.warning_amber, const Color(0xFFE53935))),
+          Expanded(child: _summaryCard('เอียงผิดท่า', '0 ครั้ง', Icons.warning_amber, const Color(0xFFE53935))),
         ]),
         const SizedBox(height: 16),
         _barChart('ชั่วโมงการอ่านหนังสือ', _dayData, _labels, const Color(0xFF43A047), true),
@@ -758,6 +832,7 @@ class _StatsPageState extends State<StatsPage> {
 
   Widget _barChart(String title, List<double> data, List<String> labels, Color color, bool showVal) {
     double maxVal = data.reduce(max);
+    if (maxVal == 0) maxVal = 1;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
@@ -777,8 +852,9 @@ class _StatsPageState extends State<StatsPage> {
                     if (showVal) Text(data[i].toStringAsFixed(1),
                         style: const TextStyle(color: Colors.white54, fontSize: 10)),
                     const SizedBox(height: 4),
-                    Container(height: 110 * ratio,
-                        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4))),
+                    Container(height: ratio > 0 ? 110 * ratio : 2,
+                        decoration: BoxDecoration(color: color.withOpacity(ratio > 0 ? 1 : 0.2),
+                            borderRadius: BorderRadius.circular(4))),
                     const SizedBox(height: 4),
                     Text(labels[i], style: const TextStyle(color: Colors.white54, fontSize: 12)),
                   ]),
