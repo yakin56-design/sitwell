@@ -579,7 +579,7 @@ class _MonitorPageState extends State<MonitorPage> {
   }
 
   void _startForegroundTask() async {
-    await FlutterForegroundTask.requestPermissionForAndroid();
+    
     await FlutterForegroundTask.startService(
       serviceId: 256,
       notificationTitle: 'SitWell กำลังทำงาน',
