@@ -31,41 +31,51 @@ class SitWellApp extends StatelessWidget {
   }
 }
 
-// ===== POSTURE ICON PAINTER =====
+// ===== POSTURE ICON PAINTER (มองด้านข้าง ไม่มีแขน ไม่มีเก้าอี้) =====
 class PostureIconPainter extends CustomPainter {
+  final double scale;
+  const PostureIconPainter({this.scale = 1.0});
+
   @override
   void paint(Canvas canvas, Size size) {
-    final greenPaint = Paint()
-      ..color = const Color(0xFF43A047)
-      ..strokeWidth = 4
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-    final redPaint = Paint()
-      ..color = const Color(0xFFE53935)
-      ..strokeWidth = 4
+    double s = size.width / 120;
+
+    // คนนั่งตรง (สีเขียว) - มองด้านข้าง
+    _drawSidePerson(canvas, s, 30 * s, 8 * s, const Color(0xFF43A047), false);
+    // คนนั่งโน้มตัว (สีแดง) - มองด้านข้าง
+    _drawSidePerson(canvas, s, 75 * s, 8 * s, const Color(0xFFE53935), true);
+  }
+
+  void _drawSidePerson(Canvas canvas, double s, double cx, double cy, Color color, bool leaning) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 3.5 * s
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
-    double s = size.width / 160;
-    double gx = 50 * s, gy = 15 * s;
-    canvas.drawCircle(Offset(gx, gy + 10 * s), 9 * s,
-        Paint()..color = const Color(0xFF43A047)..style = PaintingStyle.fill);
-    canvas.drawLine(Offset(gx, gy + 19 * s), Offset(gx, gy + 55 * s), greenPaint);
-    canvas.drawLine(Offset(gx - 18 * s, gy + 55 * s), Offset(gx + 18 * s, gy + 55 * s), greenPaint);
-    canvas.drawLine(Offset(gx - 10 * s, gy + 55 * s), Offset(gx - 10 * s, gy + 80 * s), greenPaint);
-    canvas.drawLine(Offset(gx + 10 * s, gy + 55 * s), Offset(gx + 10 * s, gy + 80 * s), greenPaint);
-    canvas.drawLine(Offset(gx, gy + 30 * s), Offset(gx - 18 * s, gy + 48 * s), greenPaint);
-    canvas.drawLine(Offset(gx, gy + 30 * s), Offset(gx + 18 * s, gy + 48 * s), greenPaint);
+    // หัว (วงกลม)
+    double headR = 7 * s;
+    double headX = leaning ? cx + 10 * s : cx;
+    double headY = cy + headR;
+    canvas.drawCircle(Offset(headX, headY), headR,
+        Paint()..color = color..style = PaintingStyle.fill);
 
-    double rx = 105 * s, ry = 15 * s;
-    canvas.drawCircle(Offset(rx + 14 * s, ry + 18 * s), 9 * s,
-        Paint()..color = const Color(0xFFE53935)..style = PaintingStyle.fill);
-    canvas.drawLine(Offset(rx, ry + 19 * s), Offset(rx + 14 * s, ry + 55 * s), redPaint);
-    canvas.drawLine(Offset(rx - 12 * s, ry + 58 * s), Offset(rx + 22 * s, ry + 58 * s), redPaint);
-    canvas.drawLine(Offset(rx - 4 * s, ry + 58 * s), Offset(rx - 4 * s, ry + 80 * s), redPaint);
-    canvas.drawLine(Offset(rx + 14 * s, ry + 58 * s), Offset(rx + 14 * s, ry + 80 * s), redPaint);
-    canvas.drawLine(Offset(rx + 6 * s, ry + 30 * s), Offset(rx + 30 * s, ry + 38 * s), redPaint);
-    canvas.drawLine(Offset(rx + 6 * s, ry + 30 * s), Offset(rx + 12 * s, ry + 52 * s), redPaint);
+    // ลำตัว
+    double neckX = headX;
+    double neckY = headY + headR;
+    double hipX = leaning ? cx - 5 * s : cx;
+    double hipY = cy + 45 * s;
+    canvas.drawLine(Offset(neckX, neckY), Offset(hipX, hipY), paint);
+
+    // ต้นขา (นั่ง - ขาวางราบ)
+    double kneeX = hipX + 22 * s;
+    double kneeY = hipY;
+    canvas.drawLine(Offset(hipX, hipY), Offset(kneeX, kneeY), paint);
+
+    // แข้ง (ห้อยลง)
+    double footX = kneeX;
+    double footY = kneeY + 22 * s;
+    canvas.drawLine(Offset(kneeX, kneeY), Offset(footX, footY), paint);
   }
 
   @override
@@ -95,11 +105,10 @@ class _SplashScreenState extends State<SplashScreen> {
         ),
         child: SafeArea(
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Spacer(),
               SizedBox(
-                width: 160, height: 110,
+                width: 160, height: 100,
                 child: CustomPaint(painter: PostureIconPainter()),
               ),
               const SizedBox(height: 40),
@@ -199,8 +208,7 @@ class BleService {
       withServices: [],
       scanMode: ScanMode.lowLatency,
     ).listen((device) {
-      if (device.name.contains('SitWell') &&
-          !found.any((d) => d.id == device.id)) {
+      if (device.name.contains('SitWell') && !found.any((d) => d.id == device.id)) {
         found.add(device);
       }
     });
@@ -269,6 +277,29 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _bleConnected = false;
   int _batteryLevel = 0;
 
+  // สถิติ - เก็บไว้ที่ HomeScreen เพื่อไม่ให้หาย
+  int _totalMinutes = 0;
+  int _totalBadPosture = 0;
+  final List<double> _weekMinutes = [0, 0, 0, 0, 0, 0, 0];
+  final List<int> _weekBadPosture = [0, 0, 0, 0, 0, 0, 0];
+
+  // settings
+  double _tiltThreshold = 30.0;
+  int _delaySeconds = 5;
+  bool _soundAlert = true;
+  bool _vibrationAlert = true;
+  bool _deviceLedAlert = true;
+
+  void _onSessionEnd(int minutes, int badCount) {
+    setState(() {
+      _totalMinutes += minutes;
+      _totalBadPosture += badCount;
+      int dayIndex = DateTime.now().weekday - 1;
+      _weekMinutes[dayIndex] += minutes / 60;
+      _weekBadPosture[dayIndex] += badCount;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -299,16 +330,47 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      MonitorPage(ble: _ble, bleConnected: _bleConnected, batteryLevel: _batteryLevel),
-      const StatsPage(),
-      const SettingsPage(),
+      MonitorPage(
+        ble: _ble,
+        bleConnected: _bleConnected,
+        batteryLevel: _batteryLevel,
+        tiltThreshold: _tiltThreshold,
+        delaySeconds: _delaySeconds,
+        soundAlert: _soundAlert,
+        vibrationAlert: _vibrationAlert,
+        deviceLedAlert: _deviceLedAlert,
+        onSessionEnd: _onSessionEnd,
+      ),
+      StatsPage(
+        totalMinutes: _totalMinutes,
+        totalBadPosture: _totalBadPosture,
+        weekMinutes: _weekMinutes,
+        weekBadPosture: _weekBadPosture,
+      ),
+      SettingsPage(
+        tiltThreshold: _tiltThreshold,
+        delaySeconds: _delaySeconds,
+        soundAlert: _soundAlert,
+        vibrationAlert: _vibrationAlert,
+        deviceLedAlert: _deviceLedAlert,
+        onChanged: (threshold, delay, sound, vibration, led) {
+          setState(() {
+            _tiltThreshold = threshold;
+            _delaySeconds = delay;
+            _soundAlert = sound;
+            _vibrationAlert = vibration;
+            _deviceLedAlert = led;
+          });
+        },
+      ),
     ];
+
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1A1A1A),
         title: Row(children: [
-          SizedBox(width: 36, height: 26,
+          SizedBox(width: 50, height: 35,
               child: CustomPaint(painter: PostureIconPainter())),
           const SizedBox(width: 8),
           const Text('SitWell', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -331,7 +393,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: pages[_currentIndex],
+      body: IndexedStack(index: _currentIndex, children: pages),
       bottomNavigationBar: NavigationBar(
         backgroundColor: const Color(0xFF1A1A1A),
         selectedIndex: _currentIndex,
@@ -477,7 +539,25 @@ class MonitorPage extends StatefulWidget {
   final BleService ble;
   final bool bleConnected;
   final int batteryLevel;
-  const MonitorPage({super.key, required this.ble, required this.bleConnected, required this.batteryLevel});
+  final double tiltThreshold;
+  final int delaySeconds;
+  final bool soundAlert;
+  final bool vibrationAlert;
+  final bool deviceLedAlert;
+  final Function(int minutes, int badCount) onSessionEnd;
+
+  const MonitorPage({
+    super.key,
+    required this.ble,
+    required this.bleConnected,
+    required this.batteryLevel,
+    required this.tiltThreshold,
+    required this.delaySeconds,
+    required this.soundAlert,
+    required this.vibrationAlert,
+    required this.deviceLedAlert,
+    required this.onSessionEnd,
+  });
   @override
   State<MonitorPage> createState() => _MonitorPageState();
 }
@@ -488,6 +568,7 @@ class _MonitorPageState extends State<MonitorPage> {
   int _sessionMinutes = 0;
   int _badPostureCount = 0;
   Timer? _timer;
+  Timer? _delayTimer;
   StreamSubscription? _dataSub;
   StreamSubscription? _sensorSub;
 
@@ -495,7 +576,7 @@ class _MonitorPageState extends State<MonitorPage> {
   double _tiltAngle = 0;
   String _postureStatus = 'กดเริ่มเพื่อเริ่มตรวจจับ';
   Color _postureColor = Colors.white54;
-  double _tiltThreshold = 30.0;
+  bool _alertCooldown = false;
 
   @override
   void initState() {
@@ -506,6 +587,7 @@ class _MonitorPageState extends State<MonitorPage> {
   @override
   void dispose() {
     _timer?.cancel();
+    _delayTimer?.cancel();
     _dataSub?.cancel();
     _sensorSub?.cancel();
     super.dispose();
@@ -517,69 +599,98 @@ class _MonitorPageState extends State<MonitorPage> {
       double x = double.parse(parts[0].split(':')[1]);
       double y = double.parse(parts[1].split(':')[1]);
       double z = double.parse(parts[2].split(':')[1]);
-      double tilt = (asin(x.clamp(-1.0, 1.0)) * 180 / pi).abs();
+      // คำนวณองศาจากทั้ง X และ Y
+      double tiltX = (asin(x.clamp(-1.0, 1.0)) * 180 / pi).abs();
+      double tiltY = (asin(y.clamp(-1.0, 1.0)) * 180 / pi).abs();
+      double tilt = max(tiltX, tiltY);
       if (!mounted) return;
       setState(() {
         _accelX = x; _accelY = y; _accelZ = z; _tiltAngle = tilt;
-        _checkPosture(tilt);
+        if (_isActive) _checkPosture(tilt);
       });
     } catch (_) {}
   }
 
   void _checkPosture(double tilt) {
-    if (!_isActive) return;
-    if (tilt > _tiltThreshold) {
-      _postureStatus = 'เอียงผิดท่า!';
-      _postureColor = const Color(0xFFE53935);
-      _badPostureCount++;
-      widget.ble.sendAlert();
-      HapticFeedback.vibrate();
+    if (tilt > widget.tiltThreshold) {
+      setState(() {
+        _postureStatus = 'เอียงผิดท่า! (${tilt.toStringAsFixed(0)}°)';
+        _postureColor = const Color(0xFFE53935);
+      });
+      if (!_alertCooldown) {
+        _alertCooldown = true;
+        _badPostureCount++;
+        _triggerAlert();
+        _delayTimer?.cancel();
+        _delayTimer = Timer(Duration(seconds: widget.delaySeconds), () {
+          _alertCooldown = false;
+        });
+      }
     } else {
-      _postureStatus = 'ท่านั่งดี ✓';
-      _postureColor = const Color(0xFF43A047);
+      setState(() {
+        _postureStatus = 'ท่านั่งดี ✓';
+        _postureColor = const Color(0xFF43A047);
+      });
     }
+  }
+
+  void _triggerAlert() {
+    if (widget.vibrationAlert) HapticFeedback.heavyImpact();
+    if (widget.deviceLedAlert) widget.ble.sendAlert();
   }
 
   void _startPhoneSensor() {
     _sensorSub?.cancel();
     _sensorSub = accelerometerEventStream().listen((event) {
-      double tilt = (asin((event.x / 9.8).clamp(-1.0, 1.0)) * 180 / pi).abs();
+      // X = ซ้าย/ขวา, Y = ก้ม/แหงน
+      double tiltX = (asin((event.x / 9.8).clamp(-1.0, 1.0)) * 180 / pi).abs();
+      double tiltY = (asin((event.y / 9.8).clamp(-1.0, 1.0)) * 180 / pi).abs();
+      // Y ปกติจะมีค่าสูงตอนตั้งตรง ต้องปรับ
+      double adjustedY = (tiltY - 80).abs(); // 80 = ค่าปกติตอนถือโทรศัพท์ตั้ง
+      double tilt = max(tiltX, adjustedY);
       if (!mounted) return;
       setState(() {
         _accelX = event.x / 9.8;
         _accelY = event.y / 9.8;
         _accelZ = event.z / 9.8;
         _tiltAngle = tilt;
-        _checkPosture(tilt);
+        if (_isActive) _checkPosture(tilt);
       });
     });
   }
 
   void _toggleMonitoring() {
-    setState(() {
-      _isActive = !_isActive;
-      if (_isActive) {
-        _postureStatus = 'กำลังตรวจจับ...';
-        _postureColor = const Color(0xFF43A047);
-        _sessionMinutes = 0;
-        _badPostureCount = 0;
-        _timer = Timer.periodic(const Duration(seconds: 60), (_) {
-          setState(() => _sessionMinutes++);
-        });
-        if (!_useDevice) _startPhoneSensor();
-        _startForegroundTask();
-      } else {
+    if (_isActive) {
+      // หยุด
+      widget.onSessionEnd(_sessionMinutes, _badPostureCount);
+      setState(() {
+        _isActive = false;
         _postureStatus = 'หยุดตรวจจับแล้ว';
         _postureColor = Colors.white54;
-        _timer?.cancel();
-        _sensorSub?.cancel();
-        FlutterForegroundTask.stopService();
-      }
-    });
+      });
+      _timer?.cancel();
+      _delayTimer?.cancel();
+      _sensorSub?.cancel();
+      FlutterForegroundTask.stopService();
+    } else {
+      // เริ่ม
+      setState(() {
+        _isActive = true;
+        _sessionMinutes = 0;
+        _badPostureCount = 0;
+        _postureStatus = 'กำลังตรวจจับ...';
+        _postureColor = const Color(0xFF43A047);
+        _alertCooldown = false;
+      });
+      _timer = Timer.periodic(const Duration(seconds: 60), (_) {
+        setState(() => _sessionMinutes++);
+      });
+      if (!_useDevice) _startPhoneSensor();
+      _startForegroundTask();
+    }
   }
 
   void _startForegroundTask() async {
-    
     await FlutterForegroundTask.startService(
       serviceId: 256,
       notificationTitle: 'SitWell กำลังทำงาน',
@@ -687,11 +798,14 @@ class _MonitorPageState extends State<MonitorPage> {
             border: Border.all(color: _isActive ? _postureColor : Colors.transparent, width: 2),
           ),
           child: Column(children: [
-            SizedBox(width: 100, height: 70,
+            SizedBox(width: 120, height: 80,
                 child: CustomPaint(painter: PostureIconPainter())),
             const SizedBox(height: 16),
             Text(_postureStatus, style: TextStyle(color: _postureColor, fontSize: 18)),
-            const SizedBox(height: 24),
+            const SizedBox(height: 8),
+            Text('ดีเลย์: ${widget.delaySeconds} วิ | องศา: ${widget.tiltThreshold.round()}°',
+                style: const TextStyle(color: Colors.white38, fontSize: 12)),
+            const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _toggleMonitoring,
               style: ElevatedButton.styleFrom(
@@ -761,19 +875,29 @@ class _MonitorPageState extends State<MonitorPage> {
 
 // ===== STATS PAGE =====
 class StatsPage extends StatefulWidget {
-  const StatsPage({super.key});
+  final int totalMinutes;
+  final int totalBadPosture;
+  final List<double> weekMinutes;
+  final List<int> weekBadPosture;
+
+  const StatsPage({
+    super.key,
+    required this.totalMinutes,
+    required this.totalBadPosture,
+    required this.weekMinutes,
+    required this.weekBadPosture,
+  });
   @override
   State<StatsPage> createState() => _StatsPageState();
 }
 
 class _StatsPageState extends State<StatsPage> {
   int _tabIndex = 0;
-  final List<double> _dayData = [0, 0, 0, 0, 0, 0, 0];
-  final List<int> _badData = [0, 0, 0, 0, 0, 0, 0];
   final List<String> _labels = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
 
   @override
   Widget build(BuildContext context) {
+    String hours = (widget.totalMinutes / 60).toStringAsFixed(1);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -802,15 +926,15 @@ class _StatsPageState extends State<StatsPage> {
         ),
         const SizedBox(height: 16),
         Row(children: [
-          Expanded(child: _summaryCard('ชั่วโมงอ่าน', '0 ชม.', Icons.menu_book, const Color(0xFF43A047))),
+          Expanded(child: _summaryCard('ชั่วโมงอ่าน', '$hours ชม.', Icons.menu_book, const Color(0xFF43A047))),
           const SizedBox(width: 12),
-          Expanded(child: _summaryCard('เอียงผิดท่า', '0 ครั้ง', Icons.warning_amber, const Color(0xFFE53935))),
+          Expanded(child: _summaryCard('เอียงผิดท่า', '${widget.totalBadPosture} ครั้ง', Icons.warning_amber, const Color(0xFFE53935))),
         ]),
         const SizedBox(height: 16),
-        _barChart('ชั่วโมงการอ่านหนังสือ', _dayData, _labels, const Color(0xFF43A047), true),
+        _barChart('ชั่วโมงการอ่านหนังสือ', widget.weekMinutes, _labels, const Color(0xFF43A047), true),
         const SizedBox(height: 16),
         _barChart('จำนวนครั้งที่นั่งเอียงผิดท่า',
-            _badData.map((e) => e.toDouble()).toList(), _labels, const Color(0xFFE53935), false),
+            widget.weekBadPosture.map((e) => e.toDouble()).toList(), _labels, const Color(0xFFE53935), false),
       ]),
     );
   }
@@ -852,9 +976,12 @@ class _StatsPageState extends State<StatsPage> {
                     if (showVal) Text(data[i].toStringAsFixed(1),
                         style: const TextStyle(color: Colors.white54, fontSize: 10)),
                     const SizedBox(height: 4),
-                    Container(height: ratio > 0 ? 110 * ratio : 2,
-                        decoration: BoxDecoration(color: color.withOpacity(ratio > 0 ? 1 : 0.2),
-                            borderRadius: BorderRadius.circular(4))),
+                    Container(
+                      height: ratio > 0 ? 110 * ratio : 2,
+                      decoration: BoxDecoration(
+                          color: color.withOpacity(ratio > 0 ? 1 : 0.2),
+                          borderRadius: BorderRadius.circular(4)),
+                    ),
                     const SizedBox(height: 4),
                     Text(labels[i], style: const TextStyle(color: Colors.white54, fontSize: 12)),
                   ]),
@@ -870,21 +997,49 @@ class _StatsPageState extends State<StatsPage> {
 
 // ===== SETTINGS PAGE =====
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+  final double tiltThreshold;
+  final int delaySeconds;
+  final bool soundAlert;
+  final bool vibrationAlert;
+  final bool deviceLedAlert;
+  final Function(double, int, bool, bool, bool) onChanged;
+
+  const SettingsPage({
+    super.key,
+    required this.tiltThreshold,
+    required this.delaySeconds,
+    required this.soundAlert,
+    required this.vibrationAlert,
+    required this.deviceLedAlert,
+    required this.onChanged,
+  });
   @override
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
 class _SettingsPageState extends State<SettingsPage> {
   int _alertMode = 0;
-  double _tiltThreshold = 30.0;
+  late double _tiltThreshold;
+  late int _delaySeconds;
+  late bool _soundAlert;
+  late bool _vibrationAlert;
+  late bool _deviceLedAlert;
   bool _goodPostureSaved = false;
   bool _badPostureSaved = false;
-  final _delayCtrl = TextEditingController(text: '5');
-  final _maxReadCtrl = TextEditingController(text: '60');
-  bool _soundAlert = true;
-  bool _vibrationAlert = true;
-  bool _deviceLedAlert = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _tiltThreshold = widget.tiltThreshold;
+    _delaySeconds = widget.delaySeconds;
+    _soundAlert = widget.soundAlert;
+    _vibrationAlert = widget.vibrationAlert;
+    _deviceLedAlert = widget.deviceLedAlert;
+  }
+
+  void _save() {
+    widget.onChanged(_tiltThreshold, _delaySeconds, _soundAlert, _vibrationAlert, _deviceLedAlert);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -898,10 +1053,7 @@ class _SettingsPageState extends State<SettingsPage> {
         if (_alertMode == 1) _modeBCard(),
         const SizedBox(height: 16),
         _label('ดีเลย์การแจ้งเตือน'),
-        _inputCard(Icons.hourglass_bottom, 'ดีเลย์ก่อนแจ้งเตือน (วินาที)', _delayCtrl, 'วิ'),
-        const SizedBox(height: 16),
-        _label('จำกัดเวลาอ่านต่อครั้ง'),
-        _inputCard(Icons.timer_off, 'เวลาอ่านสูงสุดต่อครั้ง (นาที)', _maxReadCtrl, 'นาที'),
+        _delayCard(),
         const SizedBox(height: 16),
         _label('วิธีแจ้งเตือน'),
         _alertToggles(),
@@ -959,7 +1111,7 @@ class _SettingsPageState extends State<SettingsPage> {
         Slider(
           value: _tiltThreshold, min: 5, max: 60, divisions: 55,
           activeColor: const Color(0xFF43A047), inactiveColor: Colors.white24,
-          onChanged: (v) => setState(() => _tiltThreshold = v),
+          onChanged: (v) { setState(() => _tiltThreshold = v); _save(); },
         ),
         const Text('ถ้าเอียงเกินองศานี้จะมีการแจ้งเตือน',
             style: TextStyle(color: Colors.white54, fontSize: 12)),
@@ -972,7 +1124,7 @@ class _SettingsPageState extends State<SettingsPage> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('บันทึกท่านั่ง 2 แบบเพื่อเปรียบเทียบ',
+        const Text('บันทึกท่านั่ง 2 แบบ',
             style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
         const Text('ระบบจะแจ้งเตือนเมื่อเอียงเกินท่าที่ 2',
@@ -981,23 +1133,6 @@ class _SettingsPageState extends State<SettingsPage> {
         _postureRecordTile(true),
         const SizedBox(height: 12),
         _postureRecordTile(false),
-        if (_goodPostureSaved && _badPostureSaved) ...[
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2E7D32).withOpacity(0.2),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF43A047).withOpacity(0.4)),
-            ),
-            child: const Row(children: [
-              Icon(Icons.check_circle, color: Color(0xFF43A047), size: 18),
-              SizedBox(width: 8),
-              Expanded(child: Text('พร้อมตรวจจับแล้ว!',
-                  style: TextStyle(color: Color(0xFF81C784), fontSize: 12))),
-            ]),
-          ),
-        ],
       ]),
     );
   }
@@ -1013,10 +1148,8 @@ class _SettingsPageState extends State<SettingsPage> {
         border: Border.all(color: saved ? color : Colors.white12),
       ),
       child: Row(children: [
-        isGood
-            ? Icon(Icons.accessibility_new, color: saved ? color : Colors.white38, size: 32)
-            : Transform.rotate(angle: 0.3,
-                child: Icon(Icons.accessibility_new, color: saved ? color : Colors.white38, size: 32)),
+        SizedBox(width: 40, height: 30,
+            child: CustomPaint(painter: PostureIconPainter())),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(isGood ? '① ท่านั่งดี (ตรง)' : '② ท่านั่งไม่ดี (เอียง)',
@@ -1042,28 +1175,23 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _inputCard(IconData icon, String label, TextEditingController ctrl, String suffix) {
+  Widget _delayCard() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
-      child: Row(children: [
-        Icon(icon, color: Colors.white54, size: 20),
-        const SizedBox(width: 12),
-        Expanded(child: Text(label, style: const TextStyle(color: Colors.white))),
-        SizedBox(
-          width: 90,
-          child: TextField(
-            controller: ctrl,
-            keyboardType: TextInputType.number,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white, fontSize: 18),
-            decoration: InputDecoration(
-              filled: true, fillColor: const Color(0xFF2A2A2A),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-              suffix: Text(suffix, style: const TextStyle(color: Colors.white54, fontSize: 12)),
-            ),
-          ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          const Text('ดีเลย์ก่อนแจ้งเตือน', style: TextStyle(color: Colors.white, fontSize: 16)),
+          Text('$_delaySeconds วิ',
+              style: const TextStyle(color: Color(0xFF43A047), fontSize: 22, fontWeight: FontWeight.bold)),
+        ]),
+        Slider(
+          value: _delaySeconds.toDouble(), min: 1, max: 30, divisions: 29,
+          activeColor: const Color(0xFF43A047), inactiveColor: Colors.white24,
+          onChanged: (v) { setState(() => _delaySeconds = v.round()); _save(); },
         ),
+        const Text('ถ้าเอียงนานกว่านี้ถึงจะแจ้งเตือน',
+            style: TextStyle(color: Colors.white54, fontSize: 12)),
       ]),
     );
   }
@@ -1073,10 +1201,10 @@ class _SettingsPageState extends State<SettingsPage> {
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
       child: Column(children: [
-        _toggle(Icons.volume_up, 'เสียงแจ้งเตือน', _soundAlert, (v) => setState(() => _soundAlert = v)),
-        _toggle(Icons.vibration, 'การสั่น', _vibrationAlert, (v) => setState(() => _vibrationAlert = v)),
+        _toggle(Icons.vibration, 'การสั่น', _vibrationAlert,
+            (v) { setState(() => _vibrationAlert = v); _save(); }),
         _toggle(Icons.lightbulb_outline, 'ไฟ LED ที่อุปกรณ์ SitWell', _deviceLedAlert,
-            (v) => setState(() => _deviceLedAlert = v)),
+            (v) { setState(() => _deviceLedAlert = v); _save(); }),
       ]),
     );
   }
