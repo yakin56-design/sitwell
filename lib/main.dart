@@ -5,6 +5,9 @@ import 'dart:math';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,51 +34,33 @@ class SitWellApp extends StatelessWidget {
   }
 }
 
-// ===== POSTURE ICON PAINTER (มองด้านข้าง ไม่มีแขน ไม่มีเก้าอี้) =====
+// ===== POSTURE ICON PAINTER =====
 class PostureIconPainter extends CustomPainter {
-  final double scale;
-  const PostureIconPainter({this.scale = 1.0});
-
   @override
   void paint(Canvas canvas, Size size) {
     double s = size.width / 120;
-
-    // คนนั่งตรง (สีเขียว) - มองด้านข้าง
     _drawSidePerson(canvas, s, 30 * s, 8 * s, const Color(0xFF43A047), false);
-    // คนนั่งโน้มตัว (สีแดง) - มองด้านข้าง
     _drawSidePerson(canvas, s, 75 * s, 8 * s, const Color(0xFFE53935), true);
   }
 
-  void _drawSidePerson(Canvas canvas, double s, double cx, double cy, Color color, bool leaning) {
+  void _drawSidePerson(Canvas canvas, double s, double cx, double cy,
+      Color color, bool leaning) {
     final paint = Paint()
       ..color = color
       ..strokeWidth = 3.5 * s
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
-
-    // หัว (วงกลม)
     double headR = 7 * s;
     double headX = leaning ? cx + 10 * s : cx;
     double headY = cy + headR;
     canvas.drawCircle(Offset(headX, headY), headR,
         Paint()..color = color..style = PaintingStyle.fill);
-
-    // ลำตัว
-    double neckX = headX;
-    double neckY = headY + headR;
     double hipX = leaning ? cx - 5 * s : cx;
     double hipY = cy + 45 * s;
-    canvas.drawLine(Offset(neckX, neckY), Offset(hipX, hipY), paint);
-
-    // ต้นขา (นั่ง - ขาวางราบ)
+    canvas.drawLine(Offset(headX, headY + headR), Offset(hipX, hipY), paint);
     double kneeX = hipX + 22 * s;
-    double kneeY = hipY;
-    canvas.drawLine(Offset(hipX, hipY), Offset(kneeX, kneeY), paint);
-
-    // แข้ง (ห้อยลง)
-    double footX = kneeX;
-    double footY = kneeY + 22 * s;
-    canvas.drawLine(Offset(kneeX, kneeY), Offset(footX, footY), paint);
+    canvas.drawLine(Offset(hipX, hipY), Offset(kneeX, hipY), paint);
+    canvas.drawLine(Offset(kneeX, hipY), Offset(kneeX, hipY + 22 * s), paint);
   }
 
   @override
@@ -104,77 +89,70 @@ class _SplashScreenState extends State<SplashScreen> {
           ),
         ),
         child: SafeArea(
-          child: Column(
-            children: [
-              const Spacer(),
-              SizedBox(
-                width: 160, height: 100,
-                child: CustomPaint(painter: PostureIconPainter()),
-              ),
-              const SizedBox(height: 40),
-              const Text(
-                'Improve Your\nPosture Every Day',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white, height: 1.3),
-              ),
-              const SizedBox(height: 16),
-              const Text('ช่วยให้คุณนั่งอ่านหนังสือถูกท่าทาง',
-                  style: TextStyle(fontSize: 16, color: Colors.white70)),
-              const Spacer(),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 40),
-                child: Container(
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: Colors.white12,
-                    borderRadius: BorderRadius.circular(32),
-                    border: Border.all(color: Colors.white30),
-                  ),
-                  child: Stack(
-                    alignment: Alignment.centerLeft,
-                    children: [
-                      Center(
-                        child: Text(
-                          _slideValue > 0.3 ? 'เลื่อนต่อไป →' : 'เลื่อนเพื่อเริ่มต้น →',
-                          style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 16),
-                        ),
-                      ),
-                      AnimatedPositioned(
-                        duration: const Duration(milliseconds: 50),
-                        left: _slideValue * (MediaQuery.of(context).size.width - 80 - 56),
-                        child: GestureDetector(
-                          onHorizontalDragUpdate: (d) {
-                            setState(() {
-                              double maxW = MediaQuery.of(context).size.width - 80 - 56;
-                              _slideValue = ((_slideValue * maxW + d.delta.dx) / maxW).clamp(0.0, 1.0);
-                            });
-                          },
-                          onHorizontalDragEnd: (_) {
-                            if (_slideValue > 0.8) {
-                              Navigator.pushReplacement(context,
-                                  MaterialPageRoute(builder: (_) => const HomeScreen()));
-                            } else {
-                              setState(() => _slideValue = 0.0);
-                            }
-                          },
-                          child: Container(
-                            width: 56, height: 56,
-                            margin: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF43A047),
-                              borderRadius: BorderRadius.circular(28),
-                            ),
-                            child: const Icon(Icons.arrow_forward, color: Colors.white),
+          child: Column(children: [
+            const Spacer(),
+            SizedBox(width: 160, height: 100,
+                child: CustomPaint(painter: PostureIconPainter())),
+            const SizedBox(height: 40),
+            const Text('Improve Your\nPosture Every Day',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold,
+                  color: Colors.white, height: 1.3)),
+            const SizedBox(height: 16),
+            const Text('ช่วยให้คุณนั่งอ่านหนังสือถูกท่าทาง',
+                style: TextStyle(fontSize: 16, color: Colors.white70)),
+            const Spacer(),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: Container(
+                height: 64,
+                decoration: BoxDecoration(
+                  color: Colors.white12,
+                  borderRadius: BorderRadius.circular(32),
+                  border: Border.all(color: Colors.white30),
+                ),
+                child: Stack(
+                  alignment: Alignment.centerLeft,
+                  children: [
+                    Center(child: Text(
+                      _slideValue > 0.3 ? 'เลื่อนต่อไป →' : 'เลื่อนเพื่อเริ่มต้น →',
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(0.6), fontSize: 16))),
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 50),
+                      left: _slideValue * (MediaQuery.of(context).size.width - 80 - 56),
+                      child: GestureDetector(
+                        onHorizontalDragUpdate: (d) {
+                          setState(() {
+                            double maxW = MediaQuery.of(context).size.width - 80 - 56;
+                            _slideValue = ((_slideValue * maxW + d.delta.dx) / maxW).clamp(0.0, 1.0);
+                          });
+                        },
+                        onHorizontalDragEnd: (_) {
+                          if (_slideValue > 0.8) {
+                            Navigator.pushReplacement(context,
+                                MaterialPageRoute(builder: (_) => const HomeScreen()));
+                          } else {
+                            setState(() => _slideValue = 0.0);
+                          }
+                        },
+                        child: Container(
+                          width: 56, height: 56,
+                          margin: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF43A047),
+                            borderRadius: BorderRadius.circular(28),
                           ),
+                          child: const Icon(Icons.arrow_forward, color: Colors.white),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 60),
-            ],
-          ),
+            ),
+            const SizedBox(height: 60),
+          ]),
         ),
       ),
     );
@@ -201,20 +179,35 @@ class BleService {
   static const _writeUuid   = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
   static const _notifyUuid  = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
 
+  Future<bool> requestPermissions() async {
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+      Permission.locationWhenInUse,
+    ].request();
+    return statuses.values.every((s) => s.isGranted);
+  }
+
   Future<List<DiscoveredDevice>> scanForDevices() async {
+    // ขอ permission ก่อน
+    await requestPermissions();
+
     List<DiscoveredDevice> found = [];
     _scanSub?.cancel();
     _scanSub = _ble.scanForDevices(
       withServices: [],
       scanMode: ScanMode.lowLatency,
     ).listen((device) {
-      if (device.name.contains('SitWell') && !found.any((d) => d.id == device.id)) {
+      if (device.name.isNotEmpty && !found.any((d) => d.id == device.id)) {
         found.add(device);
       }
     });
     await Future.delayed(const Duration(seconds: 5));
     _scanSub?.cancel();
-    return found;
+    // กรองเฉพาะ SitWell หรือแสดงทั้งหมดก็ได้
+    return found.where((d) =>
+        d.name.contains('SitWell') ||
+        d.name.contains('sitwell')).toList();
   }
 
   Future<bool> connect(DiscoveredDevice device) async {
@@ -222,19 +215,21 @@ class BleService {
     _connectSub?.cancel();
     _connectSub = _ble.connectToDevice(
       id: device.id,
-      connectionTimeout: const Duration(seconds: 10),
+      connectionTimeout: const Duration(seconds: 15),
     ).listen((state) async {
       if (state.connectionState == DeviceConnectionState.connected) {
         _deviceId = device.id;
-        final notifyChar = QualifiedCharacteristic(
-          serviceId: Uuid.parse(_serviceUuid),
-          characteristicId: Uuid.parse(_notifyUuid),
-          deviceId: device.id,
-        );
-        _notifySub?.cancel();
-        _notifySub = _ble.subscribeToCharacteristic(notifyChar).listen((data) {
-          _dataController.add(String.fromCharCodes(data));
-        });
+        try {
+          final notifyChar = QualifiedCharacteristic(
+            serviceId: Uuid.parse(_serviceUuid),
+            characteristicId: Uuid.parse(_notifyUuid),
+            deviceId: device.id,
+          );
+          _notifySub?.cancel();
+          _notifySub = _ble.subscribeToCharacteristic(notifyChar).listen((data) {
+            _dataController.add(String.fromCharCodes(data));
+          });
+        } catch (_) {}
         if (!completer.isCompleted) completer.complete(true);
       } else if (state.connectionState == DeviceConnectionState.disconnected) {
         _deviceId = null;
@@ -248,12 +243,14 @@ class BleService {
 
   Future<void> sendAlert() async {
     if (_deviceId == null) return;
-    final writeChar = QualifiedCharacteristic(
-      serviceId: Uuid.parse(_serviceUuid),
-      characteristicId: Uuid.parse(_writeUuid),
-      deviceId: _deviceId!,
-    );
-    await _ble.writeCharacteristicWithResponse(writeChar, value: [49]);
+    try {
+      final writeChar = QualifiedCharacteristic(
+        serviceId: Uuid.parse(_serviceUuid),
+        characteristicId: Uuid.parse(_writeUuid),
+        deviceId: _deviceId!,
+      );
+      await _ble.writeCharacteristicWithResponse(writeChar, value: [49]);
+    } catch (_) {}
   }
 
   Future<void> disconnect() async {
@@ -261,6 +258,66 @@ class BleService {
     _connectSub?.cancel();
     _scanSub?.cancel();
     _deviceId = null;
+  }
+}
+
+// ===== PREFS SERVICE =====
+class PrefsService {
+  static Future<void> saveSettings({
+    required double tiltThreshold,
+    required int delaySeconds,
+    required bool vibrationAlert,
+    required bool deviceLedAlert,
+    required bool soundAlert,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('tiltThreshold', tiltThreshold);
+    await prefs.setInt('delaySeconds', delaySeconds);
+    await prefs.setBool('vibrationAlert', vibrationAlert);
+    await prefs.setBool('deviceLedAlert', deviceLedAlert);
+    await prefs.setBool('soundAlert', soundAlert);
+  }
+
+  static Future<Map<String, dynamic>> loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    return {
+      'tiltThreshold': prefs.getDouble('tiltThreshold') ?? 30.0,
+      'delaySeconds': prefs.getInt('delaySeconds') ?? 5,
+      'vibrationAlert': prefs.getBool('vibrationAlert') ?? true,
+      'deviceLedAlert': prefs.getBool('deviceLedAlert') ?? true,
+      'soundAlert': prefs.getBool('soundAlert') ?? true,
+    };
+  }
+
+  static Future<void> saveStats({
+    required int totalMinutes,
+    required int totalBadPosture,
+    required List<double> weekMinutes,
+    required List<int> weekBadPosture,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('totalMinutes', totalMinutes);
+    await prefs.setInt('totalBadPosture', totalBadPosture);
+    await prefs.setStringList('weekMinutes',
+        weekMinutes.map((e) => e.toString()).toList());
+    await prefs.setStringList('weekBadPosture',
+        weekBadPosture.map((e) => e.toString()).toList());
+  }
+
+  static Future<Map<String, dynamic>> loadStats() async {
+    final prefs = await SharedPreferences.getInstance();
+    return {
+      'totalMinutes': prefs.getInt('totalMinutes') ?? 0,
+      'totalBadPosture': prefs.getInt('totalBadPosture') ?? 0,
+      'weekMinutes': (prefs.getStringList('weekMinutes') ??
+              ['0', '0', '0', '0', '0', '0', '0'])
+          .map((e) => double.parse(e))
+          .toList(),
+      'weekBadPosture': (prefs.getStringList('weekBadPosture') ??
+              ['0', '0', '0', '0', '0', '0', '0'])
+          .map((e) => int.parse(e))
+          .toList(),
+    };
   }
 }
 
@@ -276,34 +333,75 @@ class _HomeScreenState extends State<HomeScreen> {
   final BleService _ble = BleService();
   bool _bleConnected = false;
   int _batteryLevel = 0;
+  bool _loaded = false;
 
-  // สถิติ - เก็บไว้ที่ HomeScreen เพื่อไม่ให้หาย
-  int _totalMinutes = 0;
-  int _totalBadPosture = 0;
-  final List<double> _weekMinutes = [0, 0, 0, 0, 0, 0, 0];
-  final List<int> _weekBadPosture = [0, 0, 0, 0, 0, 0, 0];
-
-  // settings
   double _tiltThreshold = 30.0;
   int _delaySeconds = 5;
   bool _soundAlert = true;
   bool _vibrationAlert = true;
   bool _deviceLedAlert = true;
 
-  void _onSessionEnd(int minutes, int badCount) {
-    setState(() {
-      _totalMinutes += minutes;
-      _totalBadPosture += badCount;
-      int dayIndex = DateTime.now().weekday - 1;
-      _weekMinutes[dayIndex] += minutes / 60;
-      _weekBadPosture[dayIndex] += badCount;
-    });
-  }
+  int _totalMinutes = 0;
+  int _totalBadPosture = 0;
+  List<double> _weekMinutes = [0, 0, 0, 0, 0, 0, 0];
+  List<int> _weekBadPosture = [0, 0, 0, 0, 0, 0, 0];
 
   @override
   void initState() {
     super.initState();
+    _loadAll();
     _initForegroundTask();
+  }
+
+  Future<void> _loadAll() async {
+    final settings = await PrefsService.loadSettings();
+    final stats = await PrefsService.loadStats();
+    setState(() {
+      _tiltThreshold = settings['tiltThreshold'];
+      _delaySeconds = settings['delaySeconds'];
+      _vibrationAlert = settings['vibrationAlert'];
+      _deviceLedAlert = settings['deviceLedAlert'];
+      _soundAlert = settings['soundAlert'];
+      _totalMinutes = stats['totalMinutes'];
+      _totalBadPosture = stats['totalBadPosture'];
+      _weekMinutes = List<double>.from(stats['weekMinutes']);
+      _weekBadPosture = List<int>.from(stats['weekBadPosture']);
+      _loaded = true;
+    });
+  }
+
+  void _onSessionEnd(int minutes, int badCount) async {
+    int dayIndex = DateTime.now().weekday - 1;
+    setState(() {
+      _totalMinutes += minutes;
+      _totalBadPosture += badCount;
+      _weekMinutes[dayIndex] += minutes / 60;
+      _weekBadPosture[dayIndex] += badCount;
+    });
+    await PrefsService.saveStats(
+      totalMinutes: _totalMinutes,
+      totalBadPosture: _totalBadPosture,
+      weekMinutes: _weekMinutes,
+      weekBadPosture: _weekBadPosture,
+    );
+  }
+
+  void _onSettingsChanged(double threshold, int delay, bool sound,
+      bool vibration, bool led) async {
+    setState(() {
+      _tiltThreshold = threshold;
+      _delaySeconds = delay;
+      _soundAlert = sound;
+      _vibrationAlert = vibration;
+      _deviceLedAlert = led;
+    });
+    await PrefsService.saveSettings(
+      tiltThreshold: threshold,
+      delaySeconds: delay,
+      vibrationAlert: vibration,
+      deviceLedAlert: led,
+      soundAlert: sound,
+    );
   }
 
   void _initForegroundTask() {
@@ -329,6 +427,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_loaded) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF0D0D0D),
+        body: Center(
+            child: CircularProgressIndicator(color: Color(0xFF43A047))),
+      );
+    }
+
     final pages = [
       MonitorPage(
         ble: _ble,
@@ -353,15 +459,7 @@ class _HomeScreenState extends State<HomeScreen> {
         soundAlert: _soundAlert,
         vibrationAlert: _vibrationAlert,
         deviceLedAlert: _deviceLedAlert,
-        onChanged: (threshold, delay, sound, vibration, led) {
-          setState(() {
-            _tiltThreshold = threshold;
-            _delaySeconds = delay;
-            _soundAlert = sound;
-            _vibrationAlert = vibration;
-            _deviceLedAlert = led;
-          });
-        },
+        onChanged: _onSettingsChanged,
       ),
     ];
 
@@ -373,7 +471,9 @@ class _HomeScreenState extends State<HomeScreen> {
           SizedBox(width: 50, height: 35,
               child: CustomPaint(painter: PostureIconPainter())),
           const SizedBox(width: 8),
-          const Text('SitWell', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          const Text('SitWell',
+              style: TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.bold)),
         ]),
         actions: [
           GestureDetector(
@@ -382,11 +482,15 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(children: [
                 Icon(Icons.bluetooth,
-                    color: _bleConnected ? const Color(0xFF43A047) : Colors.white38, size: 24),
+                    color: _bleConnected
+                        ? const Color(0xFF43A047)
+                        : Colors.white38,
+                    size: 24),
                 if (_bleConnected) ...[
                   const SizedBox(width: 4),
                   const Text('เชื่อมต่อแล้ว',
-                      style: TextStyle(color: Color(0xFF43A047), fontSize: 12)),
+                      style: TextStyle(
+                          color: Color(0xFF43A047), fontSize: 12)),
                 ],
               ]),
             ),
@@ -397,21 +501,25 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: NavigationBar(
         backgroundColor: const Color(0xFF1A1A1A),
         selectedIndex: _currentIndex,
-        onDestinationSelected: (i) => setState(() => _currentIndex = i),
+        onDestinationSelected: (i) =>
+            setState(() => _currentIndex = i),
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.monitor_heart_outlined),
-            selectedIcon: Icon(Icons.monitor_heart, color: Color(0xFF43A047)),
+            selectedIcon:
+                Icon(Icons.monitor_heart, color: Color(0xFF43A047)),
             label: 'ตรวจจับ',
           ),
           NavigationDestination(
             icon: Icon(Icons.bar_chart_outlined),
-            selectedIcon: Icon(Icons.bar_chart, color: Color(0xFF43A047)),
+            selectedIcon:
+                Icon(Icons.bar_chart, color: Color(0xFF43A047)),
             label: 'สถิติ',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings, color: Color(0xFF43A047)),
+            selectedIcon:
+                Icon(Icons.settings, color: Color(0xFF43A047)),
             label: 'ตั้งค่า',
           ),
         ],
@@ -424,11 +532,13 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       backgroundColor: const Color(0xFF1A1A1A),
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => BleConnectSheet(
         ble: _ble,
         onConnected: () => setState(() => _bleConnected = true),
-        onDisconnected: () => setState(() => _bleConnected = false),
+        onDisconnected: () =>
+            setState(() => _bleConnected = false),
       ),
     );
   }
@@ -439,7 +549,11 @@ class BleConnectSheet extends StatefulWidget {
   final BleService ble;
   final VoidCallback onConnected;
   final VoidCallback onDisconnected;
-  const BleConnectSheet({super.key, required this.ble, required this.onConnected, required this.onDisconnected});
+  const BleConnectSheet(
+      {super.key,
+      required this.ble,
+      required this.onConnected,
+      required this.onDisconnected});
   @override
   State<BleConnectSheet> createState() => _BleConnectSheetState();
 }
@@ -450,16 +564,25 @@ class _BleConnectSheetState extends State<BleConnectSheet> {
   String _status = 'กดสแกนเพื่อค้นหาอุปกรณ์ SitWell';
 
   void _scan() async {
-    setState(() { _scanning = true; _status = 'กำลังสแกน...'; _results = []; });
+    setState(() {
+      _scanning = true;
+      _status = 'กำลังขอ permission และสแกน...';
+      _results = [];
+    });
     try {
       final results = await widget.ble.scanForDevices();
       setState(() {
         _results = results;
         _scanning = false;
-        _status = results.isEmpty ? 'ไม่พบอุปกรณ์ SitWell — ตรวจสอบว่าเปิดอุปกรณ์แล้ว' : 'พบ ${results.length} อุปกรณ์';
+        _status = results.isEmpty
+            ? 'ไม่พบอุปกรณ์ SitWell — ตรวจสอบว่าเปิดอุปกรณ์แล้ว'
+            : 'พบ ${results.length} อุปกรณ์';
       });
     } catch (e) {
-      setState(() { _scanning = false; _status = 'เกิดข้อผิดพลาด: $e'; });
+      setState(() {
+        _scanning = false;
+        _status = 'เกิดข้อผิดพลาด: $e';
+      });
     }
   }
 
@@ -479,13 +602,22 @@ class _BleConnectSheetState extends State<BleConnectSheet> {
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(width: 40, height: 4,
-            decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+        Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2))),
         const SizedBox(height: 20),
         const Text('เชื่อมต่ออุปกรณ์ SitWell',
-            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        Text(_status, style: const TextStyle(color: Colors.white54, fontSize: 13),
+        Text(_status,
+            style:
+                const TextStyle(color: Colors.white54, fontSize: 13),
             textAlign: TextAlign.center),
         const SizedBox(height: 16),
         if (widget.ble.isConnected)
@@ -495,38 +627,54 @@ class _BleConnectSheetState extends State<BleConnectSheet> {
               widget.onDisconnected();
               if (mounted) Navigator.pop(context);
             },
-            icon: const Icon(Icons.bluetooth_disabled, color: Colors.white),
-            label: const Text('ตัดการเชื่อมต่อ', style: TextStyle(color: Colors.white)),
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE53935),
+            icon: const Icon(Icons.bluetooth_disabled,
+                color: Colors.white),
+            label: const Text('ตัดการเชื่อมต่อ',
+                style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE53935),
                 minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12))),
           )
         else ...[
           ElevatedButton.icon(
             onPressed: _scanning ? null : _scan,
             icon: _scanning
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
                 : const Icon(Icons.search, color: Colors.white),
-            label: Text(_scanning ? 'กำลังสแกน...' : 'สแกนหาอุปกรณ์',
+            label: Text(
+                _scanning ? 'กำลังสแกน...' : 'สแกนหาอุปกรณ์',
                 style: const TextStyle(color: Colors.white)),
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF43A047),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF43A047),
                 minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12))),
           ),
           const SizedBox(height: 12),
           ..._results.map((r) => ListTile(
-            leading: const Icon(Icons.devices_other, color: Color(0xFF43A047)),
-            title: Text(r.name.isEmpty ? 'SitWell' : r.name,
-                style: const TextStyle(color: Colors.white)),
-            subtitle: Text('สัญญาณ: ${r.rssi} dBm',
-                style: const TextStyle(color: Colors.white54, fontSize: 12)),
-            trailing: ElevatedButton(
-              onPressed: () => _connect(r),
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF43A047),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-              child: const Text('เชื่อมต่อ', style: TextStyle(color: Colors.white)),
-            ),
-          )),
+                leading: const Icon(Icons.devices_other,
+                    color: Color(0xFF43A047)),
+                title: Text(r.name,
+                    style: const TextStyle(color: Colors.white)),
+                subtitle: Text('สัญญาณ: ${r.rssi} dBm',
+                    style: const TextStyle(
+                        color: Colors.white54, fontSize: 12)),
+                trailing: ElevatedButton(
+                  onPressed: () => _connect(r),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF43A047),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8))),
+                  child: const Text('เชื่อมต่อ',
+                      style: TextStyle(color: Colors.white)),
+                ),
+              )),
         ],
         const SizedBox(height: 8),
       ]),
@@ -576,11 +724,19 @@ class _MonitorPageState extends State<MonitorPage> {
   double _tiltAngle = 0;
   String _postureStatus = 'กดเริ่มเพื่อเริ่มตรวจจับ';
   Color _postureColor = Colors.white54;
-  bool _alertCooldown = false;
+
+  bool _isBadPosture = false;
+  bool _waitingDelay = false;
+  bool _alertedThisEvent = false;
+
+  late FlutterTts _tts;
 
   @override
   void initState() {
     super.initState();
+    _tts = FlutterTts();
+    _tts.setLanguage('th-TH');
+    _tts.setSpeechRate(0.5);
     _dataSub = widget.ble.dataStream.listen(_onBleData);
   }
 
@@ -590,6 +746,7 @@ class _MonitorPageState extends State<MonitorPage> {
     _delayTimer?.cancel();
     _dataSub?.cancel();
     _sensorSub?.cancel();
+    _tts.stop();
     super.dispose();
   }
 
@@ -599,37 +756,57 @@ class _MonitorPageState extends State<MonitorPage> {
       double x = double.parse(parts[0].split(':')[1]);
       double y = double.parse(parts[1].split(':')[1]);
       double z = double.parse(parts[2].split(':')[1]);
-      // คำนวณองศาจากทั้ง X และ Y
       double tiltX = (asin(x.clamp(-1.0, 1.0)) * 180 / pi).abs();
       double tiltY = (asin(y.clamp(-1.0, 1.0)) * 180 / pi).abs();
       double tilt = max(tiltX, tiltY);
       if (!mounted) return;
       setState(() {
-        _accelX = x; _accelY = y; _accelZ = z; _tiltAngle = tilt;
-        if (_isActive) _checkPosture(tilt);
+        _accelX = x; _accelY = y; _accelZ = z;
+        _tiltAngle = tilt;
       });
+      if (_isActive) _processPosture(tilt);
     } catch (_) {}
   }
 
-  void _checkPosture(double tilt) {
-    if (tilt > widget.tiltThreshold) {
+  void _processPosture(double tilt) {
+    bool badNow = tilt > widget.tiltThreshold;
+
+    if (badNow && !_isBadPosture) {
+      // เริ่มเอียง — เริ่มนับ delay
+      _isBadPosture = true;
+      _alertedThisEvent = false;
+      _waitingDelay = true;
       setState(() {
-        _postureStatus = 'เอียงผิดท่า! (${tilt.toStringAsFixed(0)}°)';
-        _postureColor = const Color(0xFFE53935);
+        _postureStatus = 'กำลังตรวจสอบ... (${tilt.toStringAsFixed(0)}°)';
+        _postureColor = Colors.orange;
       });
-      if (!_alertCooldown) {
-        _alertCooldown = true;
-        _badPostureCount++;
-        _triggerAlert();
-        _delayTimer?.cancel();
-        _delayTimer = Timer(Duration(seconds: widget.delaySeconds), () {
-          _alertCooldown = false;
-        });
-      }
-    } else {
+      _delayTimer?.cancel();
+      _delayTimer = Timer(Duration(seconds: widget.delaySeconds), () {
+        if (_isBadPosture && !_alertedThisEvent && mounted) {
+          _alertedThisEvent = true;
+          setState(() {
+            _badPostureCount++;
+            _postureStatus = 'เอียงผิดท่า! (${_tiltAngle.toStringAsFixed(0)}°)';
+            _postureColor = const Color(0xFFE53935);
+          });
+          _triggerAlert();
+        }
+        _waitingDelay = false;
+      });
+    } else if (!badNow && _isBadPosture) {
+      // กลับมาตรงแล้ว
+      _isBadPosture = false;
+      _alertedThisEvent = false;
+      _waitingDelay = false;
+      _delayTimer?.cancel();
       setState(() {
         _postureStatus = 'ท่านั่งดี ✓';
         _postureColor = const Color(0xFF43A047);
+      });
+    } else if (badNow && _isBadPosture && _alertedThisEvent) {
+      setState(() {
+        _postureStatus = 'เอียงผิดท่า! (${tilt.toStringAsFixed(0)}°)';
+        _postureColor = const Color(0xFFE53935);
       });
     }
   }
@@ -637,50 +814,53 @@ class _MonitorPageState extends State<MonitorPage> {
   void _triggerAlert() {
     if (widget.vibrationAlert) HapticFeedback.heavyImpact();
     if (widget.deviceLedAlert) widget.ble.sendAlert();
+    if (widget.soundAlert) _tts.speak('ปรับท่านั่ง');
   }
 
   void _startPhoneSensor() {
     _sensorSub?.cancel();
     _sensorSub = accelerometerEventStream().listen((event) {
-      // X = ซ้าย/ขวา, Y = ก้ม/แหงน
-      double tiltX = (asin((event.x / 9.8).clamp(-1.0, 1.0)) * 180 / pi).abs();
-      double tiltY = (asin((event.y / 9.8).clamp(-1.0, 1.0)) * 180 / pi).abs();
-      // Y ปกติจะมีค่าสูงตอนตั้งตรง ต้องปรับ
-      double adjustedY = (tiltY - 80).abs(); // 80 = ค่าปกติตอนถือโทรศัพท์ตั้ง
-      double tilt = max(tiltX, adjustedY);
+      double tiltX =
+          (asin((event.x / 9.8).clamp(-1.0, 1.0)) * 180 / pi).abs();
+      double rawY =
+          (asin((event.y / 9.8).clamp(-1.0, 1.0)) * 180 / pi).abs();
+      double tiltY = (rawY - 80).abs();
+      double tilt = max(tiltX, tiltY);
       if (!mounted) return;
       setState(() {
         _accelX = event.x / 9.8;
         _accelY = event.y / 9.8;
         _accelZ = event.z / 9.8;
         _tiltAngle = tilt;
-        if (_isActive) _checkPosture(tilt);
       });
+      if (_isActive) _processPosture(tilt);
     });
   }
 
   void _toggleMonitoring() {
     if (_isActive) {
-      // หยุด
       widget.onSessionEnd(_sessionMinutes, _badPostureCount);
       setState(() {
         _isActive = false;
         _postureStatus = 'หยุดตรวจจับแล้ว';
         _postureColor = Colors.white54;
+        _isBadPosture = false;
+        _waitingDelay = false;
       });
       _timer?.cancel();
       _delayTimer?.cancel();
       _sensorSub?.cancel();
       FlutterForegroundTask.stopService();
     } else {
-      // เริ่ม
       setState(() {
         _isActive = true;
         _sessionMinutes = 0;
         _badPostureCount = 0;
         _postureStatus = 'กำลังตรวจจับ...';
         _postureColor = const Color(0xFF43A047);
-        _alertCooldown = false;
+        _isBadPosture = false;
+        _waitingDelay = false;
+        _alertedThisEvent = false;
       });
       _timer = Timer.periodic(const Duration(seconds: 60), (_) {
         setState(() => _sessionMinutes++);
@@ -717,67 +897,112 @@ class _MonitorPageState extends State<MonitorPage> {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          decoration: BoxDecoration(
+              color: const Color(0xFF1A1A1A),
+              borderRadius: BorderRadius.circular(16)),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
             const Text('เลือกโหมดตรวจจับ',
-                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             Row(children: [
-              Expanded(child: _modeButton(Icons.smartphone, 'เซ็นเซอร์\nมือถือ', !_useDevice,
-                  () => setState(() { _useDevice = false; if (_isActive) _startPhoneSensor(); }))),
+              Expanded(child: _modeButton(
+                  Icons.smartphone, 'เซ็นเซอร์\nมือถือ', !_useDevice,
+                  () => setState(() {
+                        _useDevice = false;
+                        if (_isActive) _startPhoneSensor();
+                      }))),
               const SizedBox(width: 12),
-              Expanded(child: _modeButton(Icons.devices_other, 'อุปกรณ์\nSitWell', _useDevice,
-                  () => setState(() { _useDevice = true; _sensorSub?.cancel(); }))),
+              Expanded(child: _modeButton(
+                  Icons.devices_other, 'อุปกรณ์\nSitWell', _useDevice,
+                  () => setState(() {
+                        _useDevice = true;
+                        _sensorSub?.cancel();
+                      }))),
             ]),
             if (_useDevice) ...[
               const SizedBox(height: 12),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
                   color: const Color(0xFF0D0D0D),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: widget.bleConnected
-                      ? const Color(0xFF43A047).withOpacity(0.5) : Colors.white12),
+                  border: Border.all(
+                      color: widget.bleConnected
+                          ? const Color(0xFF43A047).withOpacity(0.5)
+                          : Colors.white12),
                 ),
                 child: widget.bleConnected
                     ? Row(children: [
-                        const Icon(Icons.bluetooth_connected, color: Color(0xFF43A047), size: 20),
+                        const Icon(Icons.bluetooth_connected,
+                            color: Color(0xFF43A047), size: 20),
                         const SizedBox(width: 8),
-                        const Text('SitWell', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        const Text('SitWell',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold)),
                         const Spacer(),
                         Icon(_batteryIcon(widget.batteryLevel),
-                            color: _batteryColor(widget.batteryLevel), size: 20),
+                            color: _batteryColor(widget.batteryLevel),
+                            size: 20),
                         const SizedBox(width: 4),
                         Text('${widget.batteryLevel}%',
-                            style: TextStyle(color: _batteryColor(widget.batteryLevel), fontWeight: FontWeight.bold)),
+                            style: TextStyle(
+                                color: _batteryColor(widget.batteryLevel),
+                                fontWeight: FontWeight.bold)),
                       ])
                     : const Row(children: [
-                        Icon(Icons.bluetooth_disabled, color: Colors.white38, size: 20),
+                        Icon(Icons.bluetooth_disabled,
+                            color: Colors.white38, size: 20),
                         SizedBox(width: 8),
-                        Expanded(child: Text('ยังไม่ได้เชื่อมต่อ — กดไอคอนบลูทูธด้านบน',
-                            style: TextStyle(color: Colors.white38, fontSize: 12))),
+                        Expanded(
+                            child: Text(
+                                'ยังไม่ได้เชื่อมต่อ — กดไอคอนบลูทูธด้านบน',
+                                style: TextStyle(
+                                    color: Colors.white38,
+                                    fontSize: 12))),
                       ]),
               ),
               if (widget.bleConnected) ...[
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(color: const Color(0xFF0D0D0D), borderRadius: BorderRadius.circular(12)),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  decoration: BoxDecoration(
+                      color: const Color(0xFF0D0D0D),
+                      borderRadius: BorderRadius.circular(12)),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                     const Text('ค่าเซ็นเซอร์ real-time',
-                        style: TextStyle(color: Colors.white54, fontSize: 12)),
+                        style: TextStyle(
+                            color: Colors.white54, fontSize: 12)),
                     const SizedBox(height: 8),
-                    Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+                    Row(
+                        mainAxisAlignment:
+                            MainAxisAlignment.spaceAround,
+                        children: [
                       _sensorVal('X', _accelX),
                       _sensorVal('Y', _accelY),
                       _sensorVal('Z', _accelZ),
                       Column(children: [
                         Text('${_tiltAngle.toStringAsFixed(1)}°',
-                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                        const Text('องศา', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold)),
+                        const Text('องศา',
+                            style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 11)),
                       ]),
                     ]),
                   ]),
@@ -795,26 +1020,41 @@ class _MonitorPageState extends State<MonitorPage> {
           decoration: BoxDecoration(
             color: const Color(0xFF1A1A1A),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: _isActive ? _postureColor : Colors.transparent, width: 2),
+            border: Border.all(
+                color: _isActive ? _postureColor : Colors.transparent,
+                width: 2),
           ),
           child: Column(children: [
-            SizedBox(width: 120, height: 80,
+            SizedBox(
+                width: 120,
+                height: 80,
                 child: CustomPaint(painter: PostureIconPainter())),
             const SizedBox(height: 16),
-            Text(_postureStatus, style: TextStyle(color: _postureColor, fontSize: 18)),
+            Text(_postureStatus,
+                style:
+                    TextStyle(color: _postureColor, fontSize: 18)),
             const SizedBox(height: 8),
-            Text('ดีเลย์: ${widget.delaySeconds} วิ | องศา: ${widget.tiltThreshold.round()}°',
-                style: const TextStyle(color: Colors.white38, fontSize: 12)),
+            Text(
+                'ดีเลย์: ${widget.delaySeconds} วิ | องศา: ${widget.tiltThreshold.round()}°',
+                style: const TextStyle(
+                    color: Colors.white38, fontSize: 12)),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _toggleMonitoring,
               style: ElevatedButton.styleFrom(
-                backgroundColor: _isActive ? const Color(0xFFE53935) : const Color(0xFF43A047),
-                padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+                backgroundColor: _isActive
+                    ? const Color(0xFFE53935)
+                    : const Color(0xFF43A047),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 48, vertical: 16),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(32)),
               ),
               child: Text(_isActive ? 'หยุด' : 'เริ่มตรวจจับ',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                  style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white)),
             ),
           ]),
         ),
@@ -822,10 +1062,14 @@ class _MonitorPageState extends State<MonitorPage> {
         const SizedBox(height: 16),
 
         Row(children: [
-          Expanded(child: _statCard('เวลาในเซสชัน', '$_sessionMinutes นาที', Icons.timer, Colors.white)),
+          Expanded(child: _statCard('เวลาในเซสชัน',
+              '$_sessionMinutes นาที', Icons.timer, Colors.white)),
           const SizedBox(width: 12),
-          Expanded(child: _statCard('เอียงผิดท่า', '$_badPostureCount ครั้ง', Icons.warning_amber,
-              _badPostureCount > 0 ? const Color(0xFFE53935) : Colors.white)),
+          Expanded(child: _statCard('เอียงผิดท่า',
+              '$_badPostureCount ครั้ง', Icons.warning_amber,
+              _badPostureCount > 0
+                  ? const Color(0xFFE53935)
+                  : Colors.white)),
         ]),
       ]),
     );
@@ -834,40 +1078,67 @@ class _MonitorPageState extends State<MonitorPage> {
   Widget _sensorVal(String label, double val) {
     return Column(children: [
       Text(val.toStringAsFixed(2),
-          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-      Text(label, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+          style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.bold)),
+      Text(label,
+          style: const TextStyle(
+              color: Colors.white54, fontSize: 11)),
     ]);
   }
 
-  Widget _modeButton(IconData icon, String label, bool selected, VoidCallback onTap) {
+  Widget _modeButton(IconData icon, String label, bool selected,
+      VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFF2E7D32) : const Color(0xFF2A2A2A),
+          color: selected
+              ? const Color(0xFF2E7D32)
+              : const Color(0xFF2A2A2A),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: selected ? const Color(0xFF43A047) : Colors.transparent),
+          border: Border.all(
+              color: selected
+                  ? const Color(0xFF43A047)
+                  : Colors.transparent),
         ),
         child: Column(children: [
-          Icon(icon, color: selected ? Colors.white : Colors.white54, size: 32),
+          Icon(icon,
+              color: selected ? Colors.white : Colors.white54,
+              size: 32),
           const SizedBox(height: 8),
-          Text(label, textAlign: TextAlign.center,
-              style: TextStyle(color: selected ? Colors.white : Colors.white54, fontSize: 13)),
+          Text(label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: selected ? Colors.white : Colors.white54,
+                  fontSize: 13)),
         ]),
       ),
     );
   }
 
-  Widget _statCard(String label, String value, IconData icon, Color valueColor) {
+  Widget _statCard(String label, String value, IconData icon,
+      Color valueColor) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(16)),
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
         Icon(icon, color: Colors.white54, size: 20),
         const SizedBox(height: 8),
-        Text(value, style: TextStyle(color: valueColor, fontSize: 22, fontWeight: FontWeight.bold)),
-        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        Text(value,
+            style: TextStyle(
+                color: valueColor,
+                fontSize: 22,
+                fontWeight: FontWeight.bold)),
+        Text(label,
+            style: const TextStyle(
+                color: Colors.white54, fontSize: 12)),
       ]),
     );
   }
@@ -900,24 +1171,38 @@ class _StatsPageState extends State<StatsPage> {
     String hours = (widget.totalMinutes / 60).toStringAsFixed(1);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
         Container(
-          decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(12)),
+          decoration: BoxDecoration(
+              color: const Color(0xFF1A1A1A),
+              borderRadius: BorderRadius.circular(12)),
           child: Row(
-            children: ['วัน', 'อาทิตย์', 'เดือน'].asMap().entries.map((e) {
+            children:
+                ['วัน', 'อาทิตย์', 'เดือน'].asMap().entries.map((e) {
               bool sel = _tabIndex == e.key;
               return Expanded(
                 child: GestureDetector(
                   onTap: () => setState(() => _tabIndex = e.key),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
-                      color: sel ? const Color(0xFF2E7D32) : Colors.transparent,
+                      color: sel
+                          ? const Color(0xFF2E7D32)
+                          : Colors.transparent,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Text(e.value, textAlign: TextAlign.center,
-                        style: TextStyle(color: sel ? Colors.white : Colors.white54,
-                            fontWeight: sel ? FontWeight.bold : FontWeight.normal)),
+                    child: Text(e.value,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: sel
+                                ? Colors.white
+                                : Colors.white54,
+                            fontWeight: sel
+                                ? FontWeight.bold
+                                : FontWeight.normal)),
                   ),
                 ),
               );
@@ -926,42 +1211,69 @@ class _StatsPageState extends State<StatsPage> {
         ),
         const SizedBox(height: 16),
         Row(children: [
-          Expanded(child: _summaryCard('ชั่วโมงอ่าน', '$hours ชม.', Icons.menu_book, const Color(0xFF43A047))),
+          Expanded(child: _summaryCard('ชั่วโมงอ่าน', '$hours ชม.',
+              Icons.menu_book, const Color(0xFF43A047))),
           const SizedBox(width: 12),
-          Expanded(child: _summaryCard('เอียงผิดท่า', '${widget.totalBadPosture} ครั้ง', Icons.warning_amber, const Color(0xFFE53935))),
+          Expanded(child: _summaryCard('เอียงผิดท่า',
+              '${widget.totalBadPosture} ครั้ง',
+              Icons.warning_amber, const Color(0xFFE53935))),
         ]),
         const SizedBox(height: 16),
-        _barChart('ชั่วโมงการอ่านหนังสือ', widget.weekMinutes, _labels, const Color(0xFF43A047), true),
+        _barChart('ชั่วโมงการอ่านหนังสือ', widget.weekMinutes,
+            _labels, const Color(0xFF43A047), true),
         const SizedBox(height: 16),
-        _barChart('จำนวนครั้งที่นั่งเอียงผิดท่า',
-            widget.weekBadPosture.map((e) => e.toDouble()).toList(), _labels, const Color(0xFFE53935), false),
+        _barChart(
+            'จำนวนครั้งที่นั่งเอียงผิดท่า',
+            widget.weekBadPosture.map((e) => e.toDouble()).toList(),
+            _labels,
+            const Color(0xFFE53935),
+            false),
       ]),
     );
   }
 
-  Widget _summaryCard(String label, String value, IconData icon, Color color) {
+  Widget _summaryCard(String label, String value, IconData icon,
+      Color color) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
+      decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(16)),
       child: Row(children: [
         Icon(icon, color: color, size: 32),
         const SizedBox(width: 12),
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        Column(crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+          Text(value,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold)),
+          Text(label,
+              style: const TextStyle(
+                  color: Colors.white54, fontSize: 12)),
         ]),
       ]),
     );
   }
 
-  Widget _barChart(String title, List<double> data, List<String> labels, Color color, bool showVal) {
+  Widget _barChart(String title, List<double> data,
+      List<String> labels, Color color, bool showVal) {
     double maxVal = data.reduce(max);
     if (maxVal == 0) maxVal = 1;
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+      decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(16)),
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+        Text(title,
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
         SizedBox(
           height: 140,
@@ -971,19 +1283,30 @@ class _StatsPageState extends State<StatsPage> {
               double ratio = data[i] / maxVal;
               return Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
-                    if (showVal) Text(data[i].toStringAsFixed(1),
-                        style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4),
+                  child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                    if (showVal)
+                      Text(data[i].toStringAsFixed(1),
+                          style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 10)),
                     const SizedBox(height: 4),
                     Container(
                       height: ratio > 0 ? 110 * ratio : 2,
                       decoration: BoxDecoration(
-                          color: color.withOpacity(ratio > 0 ? 1 : 0.2),
-                          borderRadius: BorderRadius.circular(4)),
+                          color: color
+                              .withOpacity(ratio > 0 ? 1 : 0.2),
+                          borderRadius:
+                              BorderRadius.circular(4)),
                     ),
                     const SizedBox(height: 4),
-                    Text(labels[i], style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                    Text(labels[i],
+                        style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 12)),
                   ]),
                 ),
               );
@@ -1038,21 +1361,24 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _save() {
-    widget.onChanged(_tiltThreshold, _delaySeconds, _soundAlert, _vibrationAlert, _deviceLedAlert);
+    widget.onChanged(_tiltThreshold, _delaySeconds, _soundAlert,
+        _vibrationAlert, _deviceLedAlert);
   }
 
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
         _label('โหมดตั้งค่าการแจ้งเตือน'),
         _modeSelector(),
         const SizedBox(height: 16),
         if (_alertMode == 0) _modeACard(),
         if (_alertMode == 1) _modeBCard(),
         const SizedBox(height: 16),
-        _label('ดีเลย์การแจ้งเตือน'),
+        _label('ดีเลย์ก่อนแจ้งเตือน'),
         _delayCard(),
         const SizedBox(height: 16),
         _label('วิธีแจ้งเตือน'),
@@ -1063,13 +1389,17 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _label(String text) => Padding(
-    padding: const EdgeInsets.only(bottom: 8),
-    child: Text(text, style: const TextStyle(color: Colors.white70, fontSize: 13)),
-  );
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(text,
+            style: const TextStyle(
+                color: Colors.white70, fontSize: 13)),
+      );
 
   Widget _modeSelector() {
     return Container(
-      decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(12)),
       child: Row(children: [
         _modeTab(0, Icons.tune, 'กำหนดองศา'),
         _modeTab(1, Icons.model_training, 'บันทึกท่านั่ง'),
@@ -1085,13 +1415,19 @@ class _SettingsPageState extends State<SettingsPage> {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: sel ? const Color(0xFF2E7D32) : Colors.transparent,
+            color: sel
+                ? const Color(0xFF2E7D32)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(children: [
-            Icon(icon, color: sel ? Colors.white : Colors.white54),
+            Icon(icon,
+                color: sel ? Colors.white : Colors.white54),
             const SizedBox(height: 4),
-            Text(label, style: TextStyle(color: sel ? Colors.white : Colors.white54, fontSize: 13)),
+            Text(label,
+                style: TextStyle(
+                    color: sel ? Colors.white : Colors.white54,
+                    fontSize: 13)),
           ]),
         ),
       ),
@@ -1101,20 +1437,38 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _modeACard() {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          const Text('องศาที่แจ้งเตือน', style: TextStyle(color: Colors.white, fontSize: 16)),
+      decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(16)),
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+          const Text('องศาที่แจ้งเตือน',
+              style:
+                  TextStyle(color: Colors.white, fontSize: 16)),
           Text('${_tiltThreshold.round()}°',
-              style: const TextStyle(color: Color(0xFF43A047), fontSize: 22, fontWeight: FontWeight.bold)),
+              style: const TextStyle(
+                  color: Color(0xFF43A047),
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold)),
         ]),
         Slider(
-          value: _tiltThreshold, min: 5, max: 60, divisions: 55,
-          activeColor: const Color(0xFF43A047), inactiveColor: Colors.white24,
-          onChanged: (v) { setState(() => _tiltThreshold = v); _save(); },
+          value: _tiltThreshold,
+          min: 5,
+          max: 60,
+          divisions: 55,
+          activeColor: const Color(0xFF43A047),
+          inactiveColor: Colors.white24,
+          onChanged: (v) {
+            setState(() => _tiltThreshold = v);
+            _save();
+          },
         ),
         const Text('ถ้าเอียงเกินองศานี้จะมีการแจ้งเตือน',
-            style: TextStyle(color: Colors.white54, fontSize: 12)),
+            style: TextStyle(
+                color: Colors.white54, fontSize: 12)),
       ]),
     );
   }
@@ -1122,13 +1476,21 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _modeBCard() {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(16)),
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
         const Text('บันทึกท่านั่ง 2 แบบ',
-            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
         const Text('ระบบจะแจ้งเตือนเมื่อเอียงเกินท่าที่ 2',
-            style: TextStyle(color: Colors.white54, fontSize: 12)),
+            style: TextStyle(
+                color: Colors.white54, fontSize: 12)),
         const SizedBox(height: 16),
         _postureRecordTile(true),
         const SizedBox(height: 12),
@@ -1139,37 +1501,71 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _postureRecordTile(bool isGood) {
     bool saved = isGood ? _goodPostureSaved : _badPostureSaved;
-    Color color = isGood ? const Color(0xFF43A047) : const Color(0xFFE53935);
+    Color color = isGood
+        ? const Color(0xFF43A047)
+        : const Color(0xFFE53935);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: saved ? color.withOpacity(0.1) : const Color(0xFF2A2A2A),
+        color: saved
+            ? color.withOpacity(0.1)
+            : const Color(0xFF2A2A2A),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: saved ? color : Colors.white12),
+        border: Border.all(
+            color: saved ? color : Colors.white12),
       ),
       child: Row(children: [
-        SizedBox(width: 40, height: 30,
+        SizedBox(
+            width: 40,
+            height: 30,
             child: CustomPaint(painter: PostureIconPainter())),
         const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(isGood ? '① ท่านั่งดี (ตรง)' : '② ท่านั่งไม่ดี (เอียง)',
-              style: TextStyle(color: saved ? color : Colors.white, fontWeight: FontWeight.bold)),
-          Text(saved ? '✓ บันทึกแล้ว' : (isGood ? 'นั่งตรงที่สุด แล้วกดบันทึก' : 'นั่งเอียงที่สุด แล้วกดบันทึก'),
-              style: TextStyle(color: saved ? color.withOpacity(0.7) : Colors.white54, fontSize: 12)),
+        Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+          Text(
+              isGood
+                  ? '① ท่านั่งดี (ตรง)'
+                  : '② ท่านั่งไม่ดี (เอียง)',
+              style: TextStyle(
+                  color: saved ? color : Colors.white,
+                  fontWeight: FontWeight.bold)),
+          Text(
+              saved
+                  ? '✓ บันทึกแล้ว'
+                  : (isGood
+                      ? 'นั่งตรงที่สุด แล้วกดบันทึก'
+                      : 'นั่งเอียงที่สุด แล้วกดบันทึก'),
+              style: TextStyle(
+                  color: saved
+                      ? color.withOpacity(0.7)
+                      : Colors.white54,
+                  fontSize: 12)),
         ])),
         ElevatedButton(
           onPressed: () {
-            setState(() => isGood ? _goodPostureSaved = true : _badPostureSaved = true);
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(isGood ? '✓ บันทึกท่านั่งดีแล้ว' : '✓ บันทึกท่านั่งไม่ดีแล้ว'),
-              backgroundColor: color, duration: const Duration(seconds: 2),
+            setState(() => isGood
+                ? _goodPostureSaved = true
+                : _badPostureSaved = true);
+            ScaffoldMessenger.of(context)
+                .showSnackBar(SnackBar(
+              content: Text(isGood
+                  ? '✓ บันทึกท่านั่งดีแล้ว'
+                  : '✓ บันทึกท่านั่งไม่ดีแล้ว'),
+              backgroundColor: color,
+              duration: const Duration(seconds: 2),
             ));
           },
-          style: ElevatedButton.styleFrom(backgroundColor: color,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+          style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 8)),
           child: Text(saved ? 'บันทึกใหม่' : 'บันทึก',
-              style: const TextStyle(color: Colors.white, fontSize: 13)),
+              style: const TextStyle(
+                  color: Colors.white, fontSize: 13)),
         ),
       ]),
     );
@@ -1178,20 +1574,38 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _delayCard() {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          const Text('ดีเลย์ก่อนแจ้งเตือน', style: TextStyle(color: Colors.white, fontSize: 16)),
+      decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(16)),
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+          const Text('ดีเลย์ก่อนแจ้งเตือน',
+              style:
+                  TextStyle(color: Colors.white, fontSize: 16)),
           Text('$_delaySeconds วิ',
-              style: const TextStyle(color: Color(0xFF43A047), fontSize: 22, fontWeight: FontWeight.bold)),
+              style: const TextStyle(
+                  color: Color(0xFF43A047),
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold)),
         ]),
         Slider(
-          value: _delaySeconds.toDouble(), min: 1, max: 30, divisions: 29,
-          activeColor: const Color(0xFF43A047), inactiveColor: Colors.white24,
-          onChanged: (v) { setState(() => _delaySeconds = v.round()); _save(); },
+          value: _delaySeconds.toDouble(),
+          min: 1,
+          max: 30,
+          divisions: 29,
+          activeColor: const Color(0xFF43A047),
+          inactiveColor: Colors.white24,
+          onChanged: (v) {
+            setState(() => _delaySeconds = v.round());
+            _save();
+          },
         ),
-        const Text('ถ้าเอียงนานกว่านี้ถึงจะแจ้งเตือน',
-            style: TextStyle(color: Colors.white54, fontSize: 12)),
+        const Text('ต้องเอียงนานกว่านี้ถึงจะนับและแจ้งเตือน',
+            style: TextStyle(
+                color: Colors.white54, fontSize: 12)),
       ]),
     );
   }
@@ -1199,21 +1613,41 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _alertToggles() {
     return Container(
       padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
+      decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(16)),
       child: Column(children: [
+        _toggle(
+            Icons.volume_up,
+            'เสียงแจ้งเตือน (พูดว่า "ปรับท่านั่ง")',
+            _soundAlert,
+            (v) {
+              setState(() => _soundAlert = v);
+              _save();
+            }),
         _toggle(Icons.vibration, 'การสั่น', _vibrationAlert,
-            (v) { setState(() => _vibrationAlert = v); _save(); }),
-        _toggle(Icons.lightbulb_outline, 'ไฟ LED ที่อุปกรณ์ SitWell', _deviceLedAlert,
-            (v) { setState(() => _deviceLedAlert = v); _save(); }),
+            (v) {
+              setState(() => _vibrationAlert = v);
+              _save();
+            }),
+        _toggle(Icons.lightbulb_outline,
+            'ไฟ LED ที่อุปกรณ์ SitWell', _deviceLedAlert,
+            (v) {
+              setState(() => _deviceLedAlert = v);
+              _save();
+            }),
       ]),
     );
   }
 
-  Widget _toggle(IconData icon, String label, bool value, ValueChanged<bool> onChanged) {
+  Widget _toggle(IconData icon, String label, bool value,
+      ValueChanged<bool> onChanged) {
     return SwitchListTile(
       secondary: Icon(icon, color: Colors.white54),
-      title: Text(label, style: const TextStyle(color: Colors.white)),
-      value: value, onChanged: onChanged,
+      title: Text(label,
+          style: const TextStyle(color: Colors.white)),
+      value: value,
+      onChanged: onChanged,
       activeColor: const Color(0xFF43A047),
     );
   }
