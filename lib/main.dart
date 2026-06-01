@@ -8,6 +8,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:vibration/vibration.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -260,7 +261,6 @@ class BleService {
 
 // ===== STATS SERVICE =====
 class StatsService {
-  // key format: "stats_YYYY-MM-DD_HH" สำหรับรายชั่วโมง
   static String _dayKey(DateTime dt, int hour) =>
       'stats_${DateFormat('yyyy-MM-dd').format(dt)}_$hour';
   static String _dateKey(DateTime dt) =>
@@ -270,15 +270,11 @@ class StatsService {
     final prefs = await SharedPreferences.getInstance();
     final now = DateTime.now();
     final hour = now.hour;
-
-    // บันทึกรายชั่วโมง
     String hKey = _dayKey(now, hour);
     double prevMin = prefs.getDouble('${hKey}_min') ?? 0;
     int prevBad = prefs.getInt('${hKey}_bad') ?? 0;
     await prefs.setDouble('${hKey}_min', prevMin + minutes / 60);
     await prefs.setInt('${hKey}_bad', prevBad + badCount);
-
-    // บันทึกรายวัน
     String dKey = _dateKey(now);
     double prevDayMin = prefs.getDouble('${dKey}_min') ?? 0;
     int prevDayBad = prefs.getInt('${dKey}_bad') ?? 0;
@@ -286,7 +282,6 @@ class StatsService {
     await prefs.setInt('${dKey}_bad', prevDayBad + badCount);
   }
 
-  // ดึงข้อมูลรายชั่วโมงของวันนี้ (24 ชั่วโมง)
   static Future<Map<String, List<double>>> getTodayData() async {
     final prefs = await SharedPreferences.getInstance();
     final now = DateTime.now();
@@ -299,11 +294,9 @@ class StatsService {
     return {'hours': hours, 'bads': bads};
   }
 
-  // ดึงข้อมูลรายวันของสัปดาห์นี้ (จันทร์-อาทิตย์)
   static Future<Map<String, List<double>>> getWeekData() async {
     final prefs = await SharedPreferences.getInstance();
     final now = DateTime.now();
-    // หาวันจันทร์ของสัปดาห์นี้
     final monday = now.subtract(Duration(days: now.weekday - 1));
     List<double> hours = [], bads = [];
     for (int i = 0; i < 7; i++) {
@@ -315,7 +308,6 @@ class StatsService {
     return {'hours': hours, 'bads': bads};
   }
 
-  // ดึงข้อมูลรายเดือนของปีนี้ (ม.ค.-ธ.ค.)
   static Future<Map<String, List<double>>> getYearData() async {
     final prefs = await SharedPreferences.getInstance();
     final now = DateTime.now();
@@ -354,29 +346,20 @@ class StatsService {
 
 // ===== SETTINGS SERVICE =====
 class SettingsService {
-  static Future<void> save({
-    required double tiltThreshold,
-    required int delaySeconds,
-    required bool vibrationAlert,
-    required bool deviceLedAlert,
-    required bool soundAlert,
-    required int alertMode,
-    required double goodPostureAngle,
-    required double badPostureAngle,
-    required double goodPostureAnglePhone,
-    required double badPostureAnglePhone,
-  }) async {
+  static Future<void> save(Map<String, dynamic> s) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('tiltThreshold', tiltThreshold);
-    await prefs.setInt('delaySeconds', delaySeconds);
-    await prefs.setBool('vibrationAlert', vibrationAlert);
-    await prefs.setBool('deviceLedAlert', deviceLedAlert);
-    await prefs.setBool('soundAlert', soundAlert);
-    await prefs.setInt('alertMode', alertMode);
-    await prefs.setDouble('goodPostureAngle', goodPostureAngle);
-    await prefs.setDouble('badPostureAngle', badPostureAngle);
-    await prefs.setDouble('goodPostureAnglePhone', goodPostureAnglePhone);
-    await prefs.setDouble('badPostureAnglePhone', badPostureAnglePhone);
+    await prefs.setDouble('tiltThreshold', s['tiltThreshold']);
+    await prefs.setInt('delaySeconds', s['delaySeconds']);
+    await prefs.setBool('vibrationAlert', s['vibrationAlert']);
+    await prefs.setBool('deviceLedAlert', s['deviceLedAlert']);
+    await prefs.setBool('soundAlert', s['soundAlert']);
+    await prefs.setInt('alertMode', s['alertMode']);
+    // Mode B — อุปกรณ์
+    await prefs.setDouble('goodAngleDevice', s['goodAngleDevice'] ?? -1);
+    await prefs.setDouble('badAngleDevice', s['badAngleDevice'] ?? -1);
+    // Mode B — มือถือ
+    await prefs.setDouble('goodAnglePhone', s['goodAnglePhone'] ?? -1);
+    await prefs.setDouble('badAnglePhone', s['badAnglePhone'] ?? -1);
   }
 
   static Future<Map<String, dynamic>> load() async {
@@ -388,10 +371,10 @@ class SettingsService {
       'deviceLedAlert': prefs.getBool('deviceLedAlert') ?? true,
       'soundAlert': prefs.getBool('soundAlert') ?? true,
       'alertMode': prefs.getInt('alertMode') ?? 0,
-      'goodPostureAngle': prefs.getDouble('goodPostureAngle') ?? -1,
-      'badPostureAngle': prefs.getDouble('badPostureAngle') ?? -1,
-      'goodPostureAnglePhone': prefs.getDouble('goodPostureAnglePhone') ?? -1,
-      'badPostureAnglePhone': prefs.getDouble('badPostureAnglePhone') ?? -1,
+      'goodAngleDevice': prefs.getDouble('goodAngleDevice') ?? -1,
+      'badAngleDevice': prefs.getDouble('badAngleDevice') ?? -1,
+      'goodAnglePhone': prefs.getDouble('goodAnglePhone') ?? -1,
+      'badAnglePhone': prefs.getDouble('badAnglePhone') ?? -1,
     };
   }
 }
@@ -410,19 +393,22 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loaded = false;
   bool _useDevice = false;
 
+  // settings
   double _tiltThreshold = 30.0;
   int _delaySeconds = 5;
   bool _soundAlert = true;
   bool _vibrationAlert = true;
   bool _deviceLedAlert = true;
-  int _alertMode = 0; // 0=Mode A, 1=Mode B
-  double _goodPostureAngle = -1;
-  double _badPostureAngle = -1;
-  double _goodPostureAnglePhone = -1;
-  double _badPostureAnglePhone = -1;
+  int _alertMode = 0;
+  double _goodAngleDevice = -1;
+  double _badAngleDevice = -1;
+  double _goodAnglePhone = -1;
+  double _badAnglePhone = -1;
 
-  // ค่าเซ็นเซอร์ปัจจุบันสำหรับ Mode B
-  double _currentTiltAngle = 0;
+  // ค่าเซ็นเซอร์ปัจจุบัน (ส่งให้ SettingsPage)
+  double _currentRawAngle = 0; // raw angle จาก sensor
+  double _baselineDevice = -1; // baseline ตอนบันทึกท่าดี
+  double _baselinePhone = -1;
 
   @override
   void initState() {
@@ -432,20 +418,64 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadSettings() async {
-    final settings = await SettingsService.load();
+    final s = await SettingsService.load();
     setState(() {
-      _tiltThreshold = settings['tiltThreshold'];
-      _delaySeconds = settings['delaySeconds'];
-      _vibrationAlert = settings['vibrationAlert'];
-      _deviceLedAlert = settings['deviceLedAlert'];
-      _soundAlert = settings['soundAlert'];
-      _alertMode = settings['alertMode'];
-      _goodPostureAngle = settings['goodPostureAngle'];
-      _badPostureAngle = settings['badPostureAngle'];
-      _goodPostureAnglePhone = settings['goodPostureAnglePhone'];
-      _badPostureAnglePhone = settings['badPostureAnglePhone'];
+      _tiltThreshold = s['tiltThreshold'];
+      _delaySeconds = s['delaySeconds'];
+      _vibrationAlert = s['vibrationAlert'];
+      _deviceLedAlert = s['deviceLedAlert'];
+      _soundAlert = s['soundAlert'];
+      _alertMode = s['alertMode'];
+      _goodAngleDevice = s['goodAngleDevice'];
+      _badAngleDevice = s['badAngleDevice'];
+      _goodAnglePhone = s['goodAnglePhone'];
+      _badAnglePhone = s['badAnglePhone'];
+      // คำนวณ baseline จากค่าที่บันทึกไว้
+      if (_goodAngleDevice >= 0) _baselineDevice = _goodAngleDevice;
+      if (_goodAnglePhone >= 0) _baselinePhone = _goodAnglePhone;
       _loaded = true;
     });
+  }
+
+  // คำนวณ threshold จริงที่ใช้ตรวจจับ
+  double _getEffectiveThreshold() {
+    if (_alertMode == 1) {
+      // Mode B
+      if (_useDevice && _goodAngleDevice >= 0 && _badAngleDevice >= 0) {
+        return (_badAngleDevice - _goodAngleDevice).abs();
+      } else if (!_useDevice && _goodAnglePhone >= 0 && _badAnglePhone >= 0) {
+        return (_badAnglePhone - _goodAnglePhone).abs();
+      }
+    }
+    // Mode A หรือ Mode B ยังไม่ได้บันทึก
+    return _tiltThreshold;
+  }
+
+  // baseline สำหรับ Mode B (offset ที่ต้องลบออกก่อนเช็ค)
+  double _getBaseline() {
+    if (_alertMode == 1) {
+      if (_useDevice && _goodAngleDevice >= 0) return _goodAngleDevice;
+      if (!_useDevice && _goodAnglePhone >= 0) return _goodAnglePhone;
+    }
+    return 0;
+  }
+
+  void _onSettingsChanged(Map<String, dynamic> s) async {
+    setState(() {
+      _tiltThreshold = s['tiltThreshold'];
+      _delaySeconds = s['delaySeconds'];
+      _soundAlert = s['soundAlert'];
+      _vibrationAlert = s['vibrationAlert'];
+      _deviceLedAlert = s['deviceLedAlert'];
+      _alertMode = s['alertMode'];
+      _goodAngleDevice = s['goodAngleDevice'];
+      _badAngleDevice = s['badAngleDevice'];
+      _goodAnglePhone = s['goodAnglePhone'];
+      _badAnglePhone = s['badAnglePhone'];
+      if (_goodAngleDevice >= 0) _baselineDevice = _goodAngleDevice;
+      if (_goodAnglePhone >= 0) _baselinePhone = _goodAnglePhone;
+    });
+    await SettingsService.save(s);
   }
 
   void _onSessionEnd(int minutes, int badCount) async {
@@ -453,39 +483,12 @@ class _HomeScreenState extends State<HomeScreen> {
     await StatsService.addTotals(minutes, badCount);
   }
 
-  void _onSettingsChanged(Map<String, dynamic> settings) async {
-    setState(() {
-      _tiltThreshold = settings['tiltThreshold'];
-      _delaySeconds = settings['delaySeconds'];
-      _soundAlert = settings['soundAlert'];
-      _vibrationAlert = settings['vibrationAlert'];
-      _deviceLedAlert = settings['deviceLedAlert'];
-      _alertMode = settings['alertMode'];
-      _goodPostureAngle = settings['goodPostureAngle'];
-      _badPostureAngle = settings['badPostureAngle'];
-      _goodPostureAnglePhone = settings['goodPostureAnglePhone'];
-      _badPostureAnglePhone = settings['badPostureAnglePhone'];
-    });
-    await SettingsService.save(
-      tiltThreshold: _tiltThreshold,
-      delaySeconds: _delaySeconds,
-      vibrationAlert: _vibrationAlert,
-      deviceLedAlert: _deviceLedAlert,
-      soundAlert: _soundAlert,
-      alertMode: _alertMode,
-      goodPostureAngle: _goodPostureAngle,
-      badPostureAngle: _badPostureAngle,
-      goodPostureAnglePhone: _goodPostureAnglePhone,
-      badPostureAnglePhone: _badPostureAnglePhone,
-    );
-  }
-
   void _onUseDeviceChanged(bool useDevice) {
     setState(() => _useDevice = useDevice);
   }
 
-  void _onTiltAngleChanged(double angle) {
-    setState(() => _currentTiltAngle = angle);
+  void _onRawAngleChanged(double angle) {
+    setState(() => _currentRawAngle = angle);
   }
 
   void _initForegroundTask() {
@@ -509,18 +512,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // คำนวณ threshold จาก Mode B
-  double _getEffectiveThreshold() {
-    if (_alertMode == 1) {
-      if (_useDevice && _goodPostureAngle >= 0 && _badPostureAngle >= 0) {
-        return (_badPostureAngle - _goodPostureAngle).abs() / 2;
-      } else if (!_useDevice && _goodPostureAnglePhone >= 0 && _badPostureAnglePhone >= 0) {
-        return (_badPostureAnglePhone - _goodPostureAnglePhone).abs() / 2;
-      }
-    }
-    return _tiltThreshold;
-  }
-
   @override
   Widget build(BuildContext context) {
     if (!_loaded) {
@@ -534,14 +525,15 @@ class _HomeScreenState extends State<HomeScreen> {
       MonitorPage(
         ble: _ble,
         bleConnected: _bleConnected,
-        tiltThreshold: _getEffectiveThreshold(),
+        effectiveThreshold: _getEffectiveThreshold(),
+        baseline: _getBaseline(),
         delaySeconds: _delaySeconds,
         soundAlert: _soundAlert,
         vibrationAlert: _vibrationAlert,
         deviceLedAlert: _deviceLedAlert,
         onSessionEnd: _onSessionEnd,
         onUseDeviceChanged: _onUseDeviceChanged,
-        onTiltAngleChanged: _onTiltAngleChanged,
+        onRawAngleChanged: _onRawAngleChanged,
       ),
       const StatsPage(),
       SettingsPage(
@@ -551,11 +543,11 @@ class _HomeScreenState extends State<HomeScreen> {
         vibrationAlert: _vibrationAlert,
         deviceLedAlert: _deviceLedAlert,
         alertMode: _alertMode,
-        goodPostureAngle: _goodPostureAngle,
-        badPostureAngle: _badPostureAngle,
-        goodPostureAnglePhone: _goodPostureAnglePhone,
-        badPostureAnglePhone: _badPostureAnglePhone,
-        currentTiltAngle: _currentTiltAngle,
+        goodAngleDevice: _goodAngleDevice,
+        badAngleDevice: _badAngleDevice,
+        goodAnglePhone: _goodAnglePhone,
+        badAnglePhone: _badAnglePhone,
+        currentRawAngle: _currentRawAngle,
         useDevice: _useDevice,
         onChanged: _onSettingsChanged,
       ),
@@ -744,27 +736,29 @@ class _BleConnectSheetState extends State<BleConnectSheet> {
 class MonitorPage extends StatefulWidget {
   final BleService ble;
   final bool bleConnected;
-  final double tiltThreshold;
+  final double effectiveThreshold;
+  final double baseline;
   final int delaySeconds;
   final bool soundAlert;
   final bool vibrationAlert;
   final bool deviceLedAlert;
   final Function(int minutes, int badCount) onSessionEnd;
   final Function(bool useDevice) onUseDeviceChanged;
-  final Function(double angle) onTiltAngleChanged;
+  final Function(double angle) onRawAngleChanged;
 
   const MonitorPage({
     super.key,
     required this.ble,
     required this.bleConnected,
-    required this.tiltThreshold,
+    required this.effectiveThreshold,
+    required this.baseline,
     required this.delaySeconds,
     required this.soundAlert,
     required this.vibrationAlert,
     required this.deviceLedAlert,
     required this.onSessionEnd,
     required this.onUseDeviceChanged,
-    required this.onTiltAngleChanged,
+    required this.onRawAngleChanged,
   });
   @override
   State<MonitorPage> createState() => _MonitorPageState();
@@ -781,8 +775,8 @@ class _MonitorPageState extends State<MonitorPage> {
   StreamSubscription? _dataSub;
   StreamSubscription? _sensorSub;
 
-  double _accelX = 0, _accelY = 0, _accelZ = 0;
-  double _tiltAngle = 0;
+  double _rawAngle = 0; // องศาดิบจาก sensor
+  double _displayAngle = 0; // องศาหลังลบ baseline
   String _postureStatus = 'กดเริ่มเพื่อเริ่มตรวจจับ';
   Color _postureColor = Colors.white54;
 
@@ -812,37 +806,37 @@ class _MonitorPageState extends State<MonitorPage> {
     super.dispose();
   }
 
+  double _calcTilt(double x, double y) {
+    double tiltX = (asin(x.clamp(-1.0, 1.0)) * 180 / pi).abs();
+    double tiltY = (asin(y.clamp(-1.0, 1.0)) * 180 / pi).abs();
+    double adjustedY = (tiltY - 90).abs();
+    return max(tiltX, adjustedY);
+  }
+
   void _onBleData(String raw) {
     try {
       final parts = raw.split(',');
       double x = double.parse(parts[0].split(':')[1]);
       double y = double.parse(parts[1].split(':')[1]);
-      double z = double.parse(parts[2].split(':')[1]);
-
-      double tiltX = (asin(x.clamp(-1.0, 1.0)) * 180 / pi).abs();
-      double tiltY = (asin(y.clamp(-1.0, 1.0)) * 180 / pi).abs();
-      double adjustedY = (tiltY - 90).abs();
-      double tilt = max(tiltX, adjustedY);
-
+      double tilt = _calcTilt(x, y);
       if (!mounted) return;
       setState(() {
-        _accelX = x; _accelY = y; _accelZ = z;
-        _tiltAngle = tilt;
+        _rawAngle = tilt;
+        _displayAngle = (tilt - widget.baseline).abs();
       });
-      widget.onTiltAngleChanged(tilt);
-      if (_isActive && _useDevice) _processPosture(tilt);
+      widget.onRawAngleChanged(tilt);
+      if (_isActive && _useDevice) _processPosture(_displayAngle);
     } catch (_) {}
   }
 
-  void _processPosture(double tilt) {
-    bool badNow = tilt > widget.tiltThreshold;
-
+  void _processPosture(double angle) {
+    bool badNow = angle > widget.effectiveThreshold;
     if (badNow && !_isBadPosture) {
       _isBadPosture = true;
       _alertedThisEvent = false;
       _waitingDelay = true;
       setState(() {
-        _postureStatus = 'กำลังตรวจสอบ... (${tilt.toStringAsFixed(0)}°)';
+        _postureStatus = 'กำลังตรวจสอบ... (${angle.toStringAsFixed(0)}°)';
         _postureColor = Colors.orange;
       });
       _delayTimer?.cancel();
@@ -851,17 +845,14 @@ class _MonitorPageState extends State<MonitorPage> {
           _alertedThisEvent = true;
           setState(() {
             _badPostureCount++;
-            _postureStatus = 'เอียงผิดท่า! (${_tiltAngle.toStringAsFixed(0)}°)';
+            _postureStatus = 'เอียงผิดท่า! (${angle.toStringAsFixed(0)}°)';
             _postureColor = const Color(0xFFE53935);
           });
           _triggerAlert();
           _repeatAlertTimer?.cancel();
           _repeatAlertTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-            if (_isBadPosture && mounted) {
-              _triggerAlert();
-            } else {
-              _repeatAlertTimer?.cancel();
-            }
+            if (_isBadPosture && mounted) _triggerAlert();
+            else _repeatAlertTimer?.cancel();
           });
         }
         _waitingDelay = false;
@@ -878,14 +869,18 @@ class _MonitorPageState extends State<MonitorPage> {
       });
     } else if (badNow && _alertedThisEvent) {
       setState(() {
-        _postureStatus = 'เอียงผิดท่า! (${tilt.toStringAsFixed(0)}°)';
+        _postureStatus = 'เอียงผิดท่า! (${angle.toStringAsFixed(0)}°)';
         _postureColor = const Color(0xFFE53935);
       });
     }
   }
 
   void _triggerAlert() {
-    if (widget.vibrationAlert) HapticFeedback.heavyImpact();
+    if (widget.vibrationAlert) {
+      Vibration.hasVibrator().then((has) {
+        if (has == true) Vibration.vibrate(duration: 500);
+      });
+    }
     if (widget.deviceLedAlert) widget.ble.sendAlert();
     if (widget.soundAlert) _tts.speak('ปรับท่านั่ง');
   }
@@ -893,20 +888,15 @@ class _MonitorPageState extends State<MonitorPage> {
   void _startPhoneSensor() {
     _sensorSub?.cancel();
     _sensorSub = accelerometerEventStream().listen((event) {
-      double tiltX = (asin((event.x / 9.8).clamp(-1.0, 1.0)) * 180 / pi).abs();
-      double rawY = (asin((event.y / 9.8).clamp(-1.0, 1.0)) * 180 / pi).abs();
-      double adjustedY = (rawY - 90).abs();
-      double tilt = max(tiltX, adjustedY);
-
+      double tilt = _calcTilt(event.x / 9.8, event.y / 9.8);
+      double displayAngle = (tilt - widget.baseline).abs();
       if (!mounted) return;
       setState(() {
-        _accelX = event.x / 9.8;
-        _accelY = event.y / 9.8;
-        _accelZ = event.z / 9.8;
-        _tiltAngle = tilt;
+        _rawAngle = tilt;
+        _displayAngle = displayAngle;
       });
-      widget.onTiltAngleChanged(tilt);
-      if (_isActive && !_useDevice) _processPosture(tilt);
+      widget.onRawAngleChanged(tilt);
+      if (_isActive && !_useDevice) _processPosture(displayAngle);
     });
   }
 
@@ -982,62 +972,32 @@ class _MonitorPageState extends State<MonitorPage> {
                     _sensorSub?.cancel();
                   }))),
             ]),
-            if (_useDevice) ...[
+            if (_useDevice && widget.bleConnected) ...[
               const SizedBox(height: 12),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0D0D0D),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: widget.bleConnected
-                      ? const Color(0xFF43A047).withOpacity(0.5) : Colors.white12),
-                ),
-                child: widget.bleConnected
-                    ? Row(children: [
-                        const Icon(Icons.bluetooth_connected,
-                            color: Color(0xFF43A047), size: 20),
-                        const SizedBox(width: 8),
-                        const Text('SitWell',
-                            style: TextStyle(color: Colors.white,
-                                fontWeight: FontWeight.bold)),
-                        const Spacer(),
-                        const Icon(Icons.check_circle,
-                            color: Color(0xFF43A047), size: 18),
-                      ])
-                    : const Row(children: [
-                        Icon(Icons.bluetooth_disabled, color: Colors.white38, size: 20),
-                        SizedBox(width: 8),
-                        Expanded(child: Text(
-                            'ยังไม่ได้เชื่อมต่อ — กดไอคอนบลูทูธด้านบน',
-                            style: TextStyle(color: Colors.white38, fontSize: 12))),
-                      ]),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: const Color(0xFF0D0D0D),
+                    borderRadius: BorderRadius.circular(12)),
+                child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                  _sensorVal('องศาดิบ', _rawAngle),
+                  _sensorVal('จาก baseline', _displayAngle),
+                ]),
               ),
-              if (widget.bleConnected) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(color: const Color(0xFF0D0D0D),
-                      borderRadius: BorderRadius.circular(12)),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Text('ค่าเซ็นเซอร์ real-time',
-                        style: TextStyle(color: Colors.white54, fontSize: 12)),
-                    const SizedBox(height: 8),
-                    Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-                      _sensorVal('X', _accelX),
-                      _sensorVal('Y', _accelY),
-                      _sensorVal('Z', _accelZ),
-                      Column(children: [
-                        Text('${_tiltAngle.toStringAsFixed(1)}°',
-                            style: const TextStyle(color: Colors.white,
-                                fontSize: 18, fontWeight: FontWeight.bold)),
-                        const Text('องศา',
-                            style: TextStyle(color: Colors.white54, fontSize: 11)),
-                      ]),
-                    ]),
-                  ]),
-                ),
-              ],
             ],
+            if (_useDevice && !widget.bleConnected)
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: const Color(0xFF0D0D0D),
+                    borderRadius: BorderRadius.circular(12)),
+                child: const Row(children: [
+                  Icon(Icons.bluetooth_disabled, color: Colors.white38, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(child: Text('ยังไม่ได้เชื่อมต่อ — กดไอคอนบลูทูธด้านบน',
+                      style: TextStyle(color: Colors.white38, fontSize: 12))),
+                ]),
+              ),
           ]),
         ),
 
@@ -1059,7 +1019,7 @@ class _MonitorPageState extends State<MonitorPage> {
             Text(_postureStatus,
                 style: TextStyle(color: _postureColor, fontSize: 18)),
             const SizedBox(height: 8),
-            Text('ดีเลย์: ${widget.delaySeconds} วิ | องศา: ${widget.tiltThreshold.toStringAsFixed(0)}°',
+            Text('ดีเลย์: ${widget.delaySeconds} วิ | threshold: ${widget.effectiveThreshold.toStringAsFixed(0)}°',
                 style: const TextStyle(color: Colors.white38, fontSize: 12)),
             const SizedBox(height: 16),
             ElevatedButton(
@@ -1093,8 +1053,8 @@ class _MonitorPageState extends State<MonitorPage> {
 
   Widget _sensorVal(String label, double val) {
     return Column(children: [
-      Text(val.toStringAsFixed(2),
-          style: const TextStyle(color: Colors.white, fontSize: 16,
+      Text('${val.toStringAsFixed(1)}°',
+          style: const TextStyle(color: Colors.white, fontSize: 18,
               fontWeight: FontWeight.bold)),
       Text(label, style: const TextStyle(color: Colors.white54, fontSize: 11)),
     ]);
@@ -1163,11 +1123,16 @@ class _StatsPageState extends State<StatsPage> {
     _loadData();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadData();
+  }
+
   Future<void> _loadData() async {
     setState(() => _loading = true);
     final totals = await StatsService.getTotals();
     Map<String, List<double>> data;
-
     if (_tabIndex == 0) {
       data = await StatsService.getTodayData();
     } else if (_tabIndex == 1) {
@@ -1175,7 +1140,7 @@ class _StatsPageState extends State<StatsPage> {
     } else {
       data = await StatsService.getYearData();
     }
-
+    if (!mounted) return;
     setState(() {
       _hoursData = data['hours']!;
       _badsData = data['bads']!;
@@ -1186,36 +1151,28 @@ class _StatsPageState extends State<StatsPage> {
   }
 
   List<String> _getLabels() {
-    if (_tabIndex == 0) {
-      // รายชั่วโมง 0-23
-      return List.generate(24, (i) => i % 4 == 0 ? '$i' : '');
-    } else if (_tabIndex == 1) {
-      return _dayLabels;
-    } else {
-      return _monthLabels;
-    }
+    if (_tabIndex == 0) return List.generate(24, (i) => i % 4 == 0 ? '$i' : '');
+    if (_tabIndex == 1) return _dayLabels;
+    return _monthLabels;
   }
 
   String _getTitle() {
     final now = DateTime.now();
-    if (_tabIndex == 0) {
-      return 'วันที่ ${DateFormat('d MMM yyyy', 'th').format(now)}';
-    } else if (_tabIndex == 1) {
+    if (_tabIndex == 0) return 'วันที่ ${now.day}/${now.month}/${now.year + 543}';
+    if (_tabIndex == 1) {
       final monday = now.subtract(Duration(days: now.weekday - 1));
       final sunday = monday.add(const Duration(days: 6));
-      return '${DateFormat('d MMM', 'th').format(monday)} - ${DateFormat('d MMM yyyy', 'th').format(sunday)}';
-    } else {
-      return 'ปี ${now.year + 543}';
+      return '${monday.day}/${monday.month} - ${sunday.day}/${sunday.month}/${sunday.year + 543}';
     }
+    return 'ปี ${now.year + 543}';
   }
 
   @override
   Widget build(BuildContext context) {
-    String hours = ((_totalMinutes) / 60).toStringAsFixed(1);
+    String hours = (_totalMinutes / 60).toStringAsFixed(1);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Tab selector
         Container(
           decoration: BoxDecoration(color: const Color(0xFF1A1A1A),
               borderRadius: BorderRadius.circular(12)),
@@ -1224,10 +1181,7 @@ class _StatsPageState extends State<StatsPage> {
               bool sel = _tabIndex == e.key;
               return Expanded(
                 child: GestureDetector(
-                  onTap: () {
-                    setState(() => _tabIndex = e.key);
-                    _loadData();
-                  },
+                  onTap: () { setState(() => _tabIndex = e.key); _loadData(); },
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
@@ -1244,18 +1198,10 @@ class _StatsPageState extends State<StatsPage> {
             }).toList(),
           ),
         ),
-
         const SizedBox(height: 8),
-
-        // แสดงช่วงเวลา
-        Center(
-          child: Text(_getTitle(),
-              style: const TextStyle(color: Colors.white54, fontSize: 13)),
-        ),
-
+        Center(child: Text(_getTitle(),
+            style: const TextStyle(color: Colors.white54, fontSize: 13))),
         const SizedBox(height: 16),
-
-        // Summary cards
         Row(children: [
           Expanded(child: _summaryCard('ชั่วโมงอ่าน', '$hours ชม.',
               Icons.menu_book, const Color(0xFF43A047))),
@@ -1264,23 +1210,19 @@ class _StatsPageState extends State<StatsPage> {
               '$_totalBadPosture ครั้ง',
               Icons.warning_amber, const Color(0xFFE53935))),
         ]),
-
         const SizedBox(height: 16),
-
         if (_loading)
           const Center(child: CircularProgressIndicator(color: Color(0xFF43A047)))
         else ...[
           _barChart(
-            _tabIndex == 0 ? 'ชั่วโมงการอ่านรายชั่วโมง'
-                : _tabIndex == 1 ? 'ชั่วโมงการอ่านรายวัน'
-                : 'ชั่วโมงการอ่านรายเดือน',
-            _hoursData, _getLabels(), const Color(0xFF43A047), true),
+              _tabIndex == 0 ? 'ชั่วโมงอ่านรายชั่วโมง'
+                  : _tabIndex == 1 ? 'ชั่วโมงอ่านรายวัน' : 'ชั่วโมงอ่านรายเดือน',
+              _hoursData, _getLabels(), const Color(0xFF43A047), true),
           const SizedBox(height: 16),
           _barChart(
-            _tabIndex == 0 ? 'ครั้งที่เอียงผิดท่ารายชั่วโมง'
-                : _tabIndex == 1 ? 'ครั้งที่เอียงผิดท่ารายวัน'
-                : 'ครั้งที่เอียงผิดท่ารายเดือน',
-            _badsData, _getLabels(), const Color(0xFFE53935), false),
+              _tabIndex == 0 ? 'ครั้งที่เอียงผิดท่ารายชั่วโมง'
+                  : _tabIndex == 1 ? 'ครั้งที่เอียงผิดท่ารายวัน' : 'ครั้งที่เอียงผิดท่ารายเดือน',
+              _badsData, _getLabels(), const Color(0xFFE53935), false),
         ],
       ]),
     );
@@ -1357,11 +1299,11 @@ class SettingsPage extends StatefulWidget {
   final bool vibrationAlert;
   final bool deviceLedAlert;
   final int alertMode;
-  final double goodPostureAngle;
-  final double badPostureAngle;
-  final double goodPostureAnglePhone;
-  final double badPostureAnglePhone;
-  final double currentTiltAngle;
+  final double goodAngleDevice;
+  final double badAngleDevice;
+  final double goodAnglePhone;
+  final double badAnglePhone;
+  final double currentRawAngle;
   final bool useDevice;
   final Function(Map<String, dynamic>) onChanged;
 
@@ -1373,11 +1315,11 @@ class SettingsPage extends StatefulWidget {
     required this.vibrationAlert,
     required this.deviceLedAlert,
     required this.alertMode,
-    required this.goodPostureAngle,
-    required this.badPostureAngle,
-    required this.goodPostureAnglePhone,
-    required this.badPostureAnglePhone,
-    required this.currentTiltAngle,
+    required this.goodAngleDevice,
+    required this.badAngleDevice,
+    required this.goodAnglePhone,
+    required this.badAnglePhone,
+    required this.currentRawAngle,
     required this.useDevice,
     required this.onChanged,
   });
@@ -1392,10 +1334,10 @@ class _SettingsPageState extends State<SettingsPage> {
   late bool _soundAlert;
   late bool _vibrationAlert;
   late bool _deviceLedAlert;
-  late double _goodPostureAngle;
-  late double _badPostureAngle;
-  late double _goodPostureAnglePhone;
-  late double _badPostureAnglePhone;
+  late double _goodAngleDevice;
+  late double _badAngleDevice;
+  late double _goodAnglePhone;
+  late double _badAnglePhone;
 
   @override
   void initState() {
@@ -1406,27 +1348,10 @@ class _SettingsPageState extends State<SettingsPage> {
     _soundAlert = widget.soundAlert;
     _vibrationAlert = widget.vibrationAlert;
     _deviceLedAlert = widget.deviceLedAlert;
-    _goodPostureAngle = widget.goodPostureAngle;
-    _badPostureAngle = widget.badPostureAngle;
-    _goodPostureAnglePhone = widget.goodPostureAnglePhone;
-    _badPostureAnglePhone = widget.badPostureAnglePhone;
-  }
-
-  @override
-  void didUpdateWidget(SettingsPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.goodPostureAngle != widget.goodPostureAngle) {
-      _goodPostureAngle = widget.goodPostureAngle;
-    }
-    if (oldWidget.badPostureAngle != widget.badPostureAngle) {
-      _badPostureAngle = widget.badPostureAngle;
-    }
-    if (oldWidget.goodPostureAnglePhone != widget.goodPostureAnglePhone) {
-      _goodPostureAnglePhone = widget.goodPostureAnglePhone;
-    }
-    if (oldWidget.badPostureAnglePhone != widget.badPostureAnglePhone) {
-      _badPostureAnglePhone = widget.badPostureAnglePhone;
-    }
+    _goodAngleDevice = widget.goodAngleDevice;
+    _badAngleDevice = widget.badAngleDevice;
+    _goodAnglePhone = widget.goodAnglePhone;
+    _badAnglePhone = widget.badAnglePhone;
   }
 
   void _save() {
@@ -1437,10 +1362,10 @@ class _SettingsPageState extends State<SettingsPage> {
       'vibrationAlert': _vibrationAlert,
       'deviceLedAlert': _deviceLedAlert,
       'alertMode': _alertMode,
-      'goodPostureAngle': _goodPostureAngle,
-      'badPostureAngle': _badPostureAngle,
-      'goodPostureAnglePhone': _goodPostureAnglePhone,
-      'badPostureAnglePhone': _badPostureAnglePhone,
+      'goodAngleDevice': _goodAngleDevice,
+      'badAngleDevice': _badAngleDevice,
+      'goodAnglePhone': _goodAnglePhone,
+      'badAnglePhone': _badAnglePhone,
     });
   }
 
@@ -1528,17 +1453,28 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _modeBCard() {
+    // กำหนดว่ากำลังใช้ค่าของมือถือหรืออุปกรณ์
+    double goodAngle = widget.useDevice ? _goodAngleDevice : _goodAnglePhone;
+    double badAngle = widget.useDevice ? _badAngleDevice : _badAnglePhone;
+    bool goodSaved = goodAngle >= 0;
+    bool badSaved = badAngle >= 0;
+    bool bothSaved = goodSaved && badSaved;
+    String source = widget.useDevice ? 'อุปกรณ์ SitWell' : 'เซ็นเซอร์มือถือ';
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.circular(16)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('บันทึกท่านั่ง 2 แบบ',
+        const Text('บันทึกท่านั่ง',
             style: TextStyle(color: Colors.white, fontSize: 16,
                 fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
+        Text('ใช้: $source',
+            style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        const SizedBox(height: 12),
 
-        // แสดงองศาปัจจุบัน
+        // องศาปัจจุบัน
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(color: const Color(0xFF0D0D0D),
@@ -1546,33 +1482,37 @@ class _SettingsPageState extends State<SettingsPage> {
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             const Icon(Icons.straighten, color: Colors.white54, size: 16),
             const SizedBox(width: 8),
-            Text('องศาปัจจุบัน: ${widget.currentTiltAngle.toStringAsFixed(1)}°',
-                style: const TextStyle(color: Colors.white, fontSize: 14)),
+            Text('องศาปัจจุบัน: ${widget.currentRawAngle.toStringAsFixed(1)}°',
+                style: const TextStyle(color: Colors.white, fontSize: 14,
+                    fontWeight: FontWeight.bold)),
           ]),
         ),
 
-        const SizedBox(height: 4),
-        Text('ใช้: ${widget.useDevice ? "อุปกรณ์ SitWell" : "เซ็นเซอร์มือถือ"}',
-            style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        if (!widget.useDevice)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text('⚠ ต้องกด "เริ่มตรวจจับ" ก่อนถึงจะอ่านค่าเซ็นเซอร์มือถือได้',
+                style: TextStyle(color: Colors.orange, fontSize: 11)),
+          ),
 
         const SizedBox(height: 16),
 
         // ท่าดี
-        _postureRecordTile(
+        _postureBtn(
           isGood: true,
-          saved: widget.useDevice ? _goodPostureAngle >= 0 : _goodPostureAnglePhone >= 0,
-          savedAngle: widget.useDevice ? _goodPostureAngle : _goodPostureAnglePhone,
+          saved: goodSaved,
+          savedAngle: goodAngle,
           onSave: () {
             setState(() {
               if (widget.useDevice) {
-                _goodPostureAngle = widget.currentTiltAngle;
+                _goodAngleDevice = widget.currentRawAngle;
               } else {
-                _goodPostureAnglePhone = widget.currentTiltAngle;
+                _goodAnglePhone = widget.currentRawAngle;
               }
             });
             _save();
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('✓ บันทึกท่านั่งดีแล้ว'),
+              content: Text('✓ บันทึกท่านั่งดีแล้ว (= 0°)'),
               backgroundColor: Color(0xFF43A047),
               duration: Duration(seconds: 2),
             ));
@@ -1582,16 +1522,16 @@ class _SettingsPageState extends State<SettingsPage> {
         const SizedBox(height: 12),
 
         // ท่าไม่ดี
-        _postureRecordTile(
+        _postureBtn(
           isGood: false,
-          saved: widget.useDevice ? _badPostureAngle >= 0 : _badPostureAnglePhone >= 0,
-          savedAngle: widget.useDevice ? _badPostureAngle : _badPostureAnglePhone,
+          saved: badSaved,
+          savedAngle: badAngle,
           onSave: () {
             setState(() {
               if (widget.useDevice) {
-                _badPostureAngle = widget.currentTiltAngle;
+                _badAngleDevice = widget.currentRawAngle;
               } else {
-                _badPostureAnglePhone = widget.currentTiltAngle;
+                _badAnglePhone = widget.currentRawAngle;
               }
             });
             _save();
@@ -1603,9 +1543,8 @@ class _SettingsPageState extends State<SettingsPage> {
           },
         ),
 
-        // แสดงสถานะพร้อมใช้
-        if ((widget.useDevice && _goodPostureAngle >= 0 && _badPostureAngle >= 0) ||
-            (!widget.useDevice && _goodPostureAnglePhone >= 0 && _badPostureAnglePhone >= 0)) ...[
+        // สถานะพร้อมใช้
+        if (bothSaved) ...[
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),
@@ -1618,9 +1557,8 @@ class _SettingsPageState extends State<SettingsPage> {
               const Icon(Icons.check_circle, color: Color(0xFF43A047), size: 18),
               const SizedBox(width: 8),
               Expanded(child: Text(
-                  'พร้อมตรวจจับแล้ว! ท่าดี: ${widget.useDevice ? _goodPostureAngle.toStringAsFixed(0) : _goodPostureAnglePhone.toStringAsFixed(0)}° | '
-                  'ท่าไม่ดี: ${widget.useDevice ? _badPostureAngle.toStringAsFixed(0) : _badPostureAnglePhone.toStringAsFixed(0)}°',
-                  style: const TextStyle(color: Color(0xFF81C784), fontSize: 11))),
+                  'พร้อมใช้งาน! threshold = ${(badAngle - goodAngle).abs().toStringAsFixed(0)}°',
+                  style: const TextStyle(color: Color(0xFF81C784), fontSize: 12))),
             ]),
           ),
         ],
@@ -1628,7 +1566,7 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _postureRecordTile({
+  Widget _postureBtn({
     required bool isGood,
     required bool saved,
     required double savedAngle,
@@ -1643,17 +1581,18 @@ class _SettingsPageState extends State<SettingsPage> {
         border: Border.all(color: saved ? color : Colors.white12),
       ),
       child: Row(children: [
-        SizedBox(width: 40, height: 30,
-            child: CustomPaint(painter: PostureIconPainter())),
+        Icon(isGood ? Icons.check_circle_outline : Icons.warning_amber_outlined,
+            color: color, size: 32),
         const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(isGood ? '① ท่านั่งดี (ตรง)' : '② ท่านั่งไม่ดี (เอียง)',
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+          Text(isGood ? '① ท่านั่งดี (= 0°)' : '② ท่านั่งไม่ดี (threshold)',
               style: TextStyle(color: saved ? color : Colors.white,
                   fontWeight: FontWeight.bold)),
           Text(saved
               ? '✓ บันทึกแล้ว (${savedAngle.toStringAsFixed(0)}°)'
               : (isGood ? 'นั่งตรงที่สุด แล้วกดบันทึก'
-                  : 'นั่งเอียงที่สุด แล้วกดบันทึก'),
+                  : 'นั่งเอียงที่สุดที่ยอมรับได้ แล้วกดบันทึก'),
               style: TextStyle(
                   color: saved ? color.withOpacity(0.7) : Colors.white54,
                   fontSize: 12)),
