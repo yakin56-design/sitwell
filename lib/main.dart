@@ -120,21 +120,27 @@ class _SplashScreenState extends State<SplashScreen> {
                   children: [
                     Center(child: Text(
                       _slideValue > 0.3 ? 'เลื่อนต่อไป →' : 'เลื่อนเพื่อเริ่มต้น →',
-                      style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 16))),
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(0.6), fontSize: 16))),
                     AnimatedPositioned(
                       duration: const Duration(milliseconds: 50),
-                      left: _slideValue * (MediaQuery.of(context).size.width - 80 - 56),
+                      left: _slideValue *
+                          (MediaQuery.of(context).size.width - 80 - 56),
                       child: GestureDetector(
                         onHorizontalDragUpdate: (d) {
                           setState(() {
-                            double maxW = MediaQuery.of(context).size.width - 80 - 56;
-                            _slideValue = ((_slideValue * maxW + d.delta.dx) / maxW).clamp(0.0, 1.0);
+                            double maxW =
+                                MediaQuery.of(context).size.width - 80 - 56;
+                            _slideValue =
+                                ((_slideValue * maxW + d.delta.dx) / maxW)
+                                    .clamp(0.0, 1.0);
                           });
                         },
                         onHorizontalDragEnd: (_) {
                           if (_slideValue > 0.8) {
                             Navigator.pushReplacement(context,
-                                MaterialPageRoute(builder: (_) => const HomeScreen()));
+                                MaterialPageRoute(
+                                    builder: (_) => const HomeScreen()));
                           } else {
                             setState(() => _slideValue = 0.0);
                           }
@@ -146,7 +152,8 @@ class _SplashScreenState extends State<SplashScreen> {
                             color: const Color(0xFF43A047),
                             borderRadius: BorderRadius.circular(28),
                           ),
-                          child: const Icon(Icons.arrow_forward, color: Colors.white),
+                          child: const Icon(Icons.arrow_forward,
+                              color: Colors.white),
                         ),
                       ),
                     ),
@@ -179,8 +186,8 @@ class BleService {
   Stream<String> get dataStream => _dataController.stream;
 
   static const _serviceUuid = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
-  static const _writeUuid   = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
-  static const _notifyUuid  = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+  static const _writeUuid = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+  static const _notifyUuid = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
 
   Future<bool> requestPermissions() async {
     Map<Permission, PermissionStatus> statuses = await [
@@ -205,16 +212,20 @@ class BleService {
     });
     await Future.delayed(const Duration(seconds: 5));
     _scanSub?.cancel();
-    return found.where((d) => d.name.toLowerCase().contains('sitwell')).toList();
+    return found
+        .where((d) => d.name.toLowerCase().contains('sitwell'))
+        .toList();
   }
 
   Future<bool> connect(DiscoveredDevice device) async {
     final completer = Completer<bool>();
     _connectSub?.cancel();
-    _connectSub = _ble.connectToDevice(
+    _connectSub = _ble
+        .connectToDevice(
       id: device.id,
       connectionTimeout: const Duration(seconds: 15),
-    ).listen((state) async {
+    )
+        .listen((state) async {
       if (state.connectionState == DeviceConnectionState.connected) {
         _deviceId = device.id;
         try {
@@ -224,12 +235,14 @@ class BleService {
             deviceId: device.id,
           );
           _notifySub?.cancel();
-          _notifySub = _ble.subscribeToCharacteristic(notifyChar).listen((data) {
+          _notifySub =
+              _ble.subscribeToCharacteristic(notifyChar).listen((data) {
             _dataController.add(String.fromCharCodes(data));
           });
         } catch (_) {}
         if (!completer.isCompleted) completer.complete(true);
-      } else if (state.connectionState == DeviceConnectionState.disconnected) {
+      } else if (state.connectionState ==
+          DeviceConnectionState.disconnected) {
         _deviceId = null;
         if (!completer.isCompleted) completer.complete(false);
       }
@@ -261,6 +274,10 @@ class BleService {
 
 // ===== STATS SERVICE =====
 class StatsService {
+  // Stream สำหรับแจ้งเตือน StatsPage ให้ reload
+  static final _refreshController = StreamController<void>.broadcast();
+  static Stream<void> get refreshStream => _refreshController.stream;
+
   static String _dayKey(DateTime dt, int hour) =>
       'stats_${DateFormat('yyyy-MM-dd').format(dt)}_$hour';
   static String _dateKey(DateTime dt) =>
@@ -341,6 +358,8 @@ class StatsService {
     int prevBad = prefs.getInt('totalBadPosture') ?? 0;
     await prefs.setInt('totalMinutes', prev + minutes);
     await prefs.setInt('totalBadPosture', prevBad + badCount);
+    // แจ้ง StatsPage ให้ reload
+    _refreshController.add(null);
   }
 }
 
@@ -354,10 +373,8 @@ class SettingsService {
     await prefs.setBool('deviceLedAlert', s['deviceLedAlert']);
     await prefs.setBool('soundAlert', s['soundAlert']);
     await prefs.setInt('alertMode', s['alertMode']);
-    // Mode B — อุปกรณ์
     await prefs.setDouble('goodAngleDevice', s['goodAngleDevice'] ?? -1);
     await prefs.setDouble('badAngleDevice', s['badAngleDevice'] ?? -1);
-    // Mode B — มือถือ
     await prefs.setDouble('goodAnglePhone', s['goodAnglePhone'] ?? -1);
     await prefs.setDouble('badAnglePhone', s['badAnglePhone'] ?? -1);
   }
@@ -393,7 +410,6 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loaded = false;
   bool _useDevice = false;
 
-  // settings
   double _tiltThreshold = 30.0;
   int _delaySeconds = 5;
   bool _soundAlert = true;
@@ -404,11 +420,7 @@ class _HomeScreenState extends State<HomeScreen> {
   double _badAngleDevice = -1;
   double _goodAnglePhone = -1;
   double _badAnglePhone = -1;
-
-  // ค่าเซ็นเซอร์ปัจจุบัน (ส่งให้ SettingsPage)
-  double _currentRawAngle = 0; // raw angle จาก sensor
-  double _baselineDevice = -1; // baseline ตอนบันทึกท่าดี
-  double _baselinePhone = -1;
+  double _currentRawAngle = 0;
 
   @override
   void initState() {
@@ -430,28 +442,23 @@ class _HomeScreenState extends State<HomeScreen> {
       _badAngleDevice = s['badAngleDevice'];
       _goodAnglePhone = s['goodAnglePhone'];
       _badAnglePhone = s['badAnglePhone'];
-      // คำนวณ baseline จากค่าที่บันทึกไว้
-      if (_goodAngleDevice >= 0) _baselineDevice = _goodAngleDevice;
-      if (_goodAnglePhone >= 0) _baselinePhone = _goodAnglePhone;
       _loaded = true;
     });
   }
 
-  // คำนวณ threshold จริงที่ใช้ตรวจจับ
   double _getEffectiveThreshold() {
     if (_alertMode == 1) {
-      // Mode B
       if (_useDevice && _goodAngleDevice >= 0 && _badAngleDevice >= 0) {
         return (_badAngleDevice - _goodAngleDevice).abs();
-      } else if (!_useDevice && _goodAnglePhone >= 0 && _badAnglePhone >= 0) {
+      } else if (!_useDevice &&
+          _goodAnglePhone >= 0 &&
+          _badAnglePhone >= 0) {
         return (_badAnglePhone - _goodAnglePhone).abs();
       }
     }
-    // Mode A หรือ Mode B ยังไม่ได้บันทึก
     return _tiltThreshold;
   }
 
-  // baseline สำหรับ Mode B (offset ที่ต้องลบออกก่อนเช็ค)
   double _getBaseline() {
     if (_alertMode == 1) {
       if (_useDevice && _goodAngleDevice >= 0) return _goodAngleDevice;
@@ -472,8 +479,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _badAngleDevice = s['badAngleDevice'];
       _goodAnglePhone = s['goodAnglePhone'];
       _badAnglePhone = s['badAnglePhone'];
-      if (_goodAngleDevice >= 0) _baselineDevice = _goodAngleDevice;
-      if (_goodAnglePhone >= 0) _baselinePhone = _goodAnglePhone;
     });
     await SettingsService.save(s);
   }
@@ -517,7 +522,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!_loaded) {
       return const Scaffold(
         backgroundColor: Color(0xFF0D0D0D),
-        body: Center(child: CircularProgressIndicator(color: Color(0xFF43A047))),
+        body: Center(
+            child:
+                CircularProgressIndicator(color: Color(0xFF43A047))),
       );
     }
 
@@ -535,7 +542,7 @@ class _HomeScreenState extends State<HomeScreen> {
         onUseDeviceChanged: _onUseDeviceChanged,
         onRawAngleChanged: _onRawAngleChanged,
       ),
-      StatsPage(key: UniqueKey()),
+      const StatsPage(),
       SettingsPage(
         tiltThreshold: _tiltThreshold,
         delaySeconds: _delaySeconds,
@@ -558,11 +565,14 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF1A1A1A),
         title: Row(children: [
-          SizedBox(width: 50, height: 35,
+          SizedBox(
+              width: 50,
+              height: 35,
               child: CustomPaint(painter: PostureIconPainter())),
           const SizedBox(width: 8),
           const Text('SitWell',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              style: TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.bold)),
         ]),
         actions: [
           GestureDetector(
@@ -571,53 +581,44 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(children: [
                 Icon(Icons.bluetooth,
-                    color: _bleConnected ? const Color(0xFF43A047) : Colors.white38,
+                    color: _bleConnected
+                        ? const Color(0xFF43A047)
+                        : Colors.white38,
                     size: 24),
                 if (_bleConnected) ...[
                   const SizedBox(width: 4),
                   const Text('เชื่อมต่อแล้ว',
-                      style: TextStyle(color: Color(0xFF43A047), fontSize: 12)),
+                      style: TextStyle(
+                          color: Color(0xFF43A047), fontSize: 12)),
                 ],
               ]),
             ),
           ),
         ],
       ),
-      @override
-  void initState() {
-    super.initState();
-    // เข้ามาที่วัน → กระโดดไปสัปดาห์ → กลับมาวัน เร็วมากจนมองไม่เห็น
-    _tabIndex = 1;
-    _loadData().then((_) {
-      if (mounted) {
-        setState(() => _tabIndex = 0);
-        _loadData();
-      }
-    });body: _currentIndex == 1
-          ? const StatsPage()
-          : IndexedStack(
-              index: _currentIndex == 0 ? 0 : 1,
-              children: [pages[0], pages[2]],
-            ),
-  }
+      body: IndexedStack(index: _currentIndex, children: pages),
       bottomNavigationBar: NavigationBar(
         backgroundColor: const Color(0xFF1A1A1A),
         selectedIndex: _currentIndex,
-        onDestinationSelected: (i) => setState(() => _currentIndex = i),
+        onDestinationSelected: (i) =>
+            setState(() => _currentIndex = i),
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.monitor_heart_outlined),
-            selectedIcon: Icon(Icons.monitor_heart, color: Color(0xFF43A047)),
+            selectedIcon:
+                Icon(Icons.monitor_heart, color: Color(0xFF43A047)),
             label: 'ตรวจจับ',
           ),
           NavigationDestination(
             icon: Icon(Icons.bar_chart_outlined),
-            selectedIcon: Icon(Icons.bar_chart, color: Color(0xFF43A047)),
+            selectedIcon:
+                Icon(Icons.bar_chart, color: Color(0xFF43A047)),
             label: 'สถิติ',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings, color: Color(0xFF43A047)),
+            selectedIcon:
+                Icon(Icons.settings, color: Color(0xFF43A047)),
             label: 'ตั้งค่า',
           ),
         ],
@@ -630,7 +631,8 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       backgroundColor: const Color(0xFF1A1A1A),
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => BleConnectSheet(
         ble: _ble,
         onConnected: () => setState(() => _bleConnected = true),
@@ -645,8 +647,11 @@ class BleConnectSheet extends StatefulWidget {
   final BleService ble;
   final VoidCallback onConnected;
   final VoidCallback onDisconnected;
-  const BleConnectSheet({super.key, required this.ble,
-      required this.onConnected, required this.onDisconnected});
+  const BleConnectSheet(
+      {super.key,
+      required this.ble,
+      required this.onConnected,
+      required this.onDisconnected});
   @override
   State<BleConnectSheet> createState() => _BleConnectSheetState();
 }
@@ -657,7 +662,11 @@ class _BleConnectSheetState extends State<BleConnectSheet> {
   String _status = 'กดสแกนเพื่อค้นหาอุปกรณ์ SitWell';
 
   void _scan() async {
-    setState(() { _scanning = true; _status = 'กำลังสแกน...'; _results = []; });
+    setState(() {
+      _scanning = true;
+      _status = 'กำลังสแกน...';
+      _results = [];
+    });
     try {
       final results = await widget.ble.scanForDevices();
       setState(() {
@@ -668,7 +677,10 @@ class _BleConnectSheetState extends State<BleConnectSheet> {
             : 'พบ ${results.length} อุปกรณ์';
       });
     } catch (e) {
-      setState(() { _scanning = false; _status = 'เกิดข้อผิดพลาด: $e'; });
+      setState(() {
+        _scanning = false;
+        _status = 'เกิดข้อผิดพลาด: $e';
+      });
     }
   }
 
@@ -688,15 +700,22 @@ class _BleConnectSheetState extends State<BleConnectSheet> {
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(width: 40, height: 4,
-            decoration: BoxDecoration(color: Colors.white24,
+        Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+                color: Colors.white24,
                 borderRadius: BorderRadius.circular(2))),
         const SizedBox(height: 20),
         const Text('เชื่อมต่ออุปกรณ์ SitWell',
-            style: TextStyle(color: Colors.white, fontSize: 18,
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
                 fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        Text(_status, style: const TextStyle(color: Colors.white54, fontSize: 13),
+        Text(_status,
+            style:
+                const TextStyle(color: Colors.white54, fontSize: 13),
             textAlign: TextAlign.center),
         const SizedBox(height: 16),
         if (widget.ble.isConnected)
@@ -706,41 +725,54 @@ class _BleConnectSheetState extends State<BleConnectSheet> {
               widget.onDisconnected();
               if (mounted) Navigator.pop(context);
             },
-            icon: const Icon(Icons.bluetooth_disabled, color: Colors.white),
-            label: const Text('ตัดการเชื่อมต่อ', style: TextStyle(color: Colors.white)),
+            icon: const Icon(Icons.bluetooth_disabled,
+                color: Colors.white),
+            label: const Text('ตัดการเชื่อมต่อ',
+                style: TextStyle(color: Colors.white)),
             style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFE53935),
                 minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12))),
           )
         else ...[
           ElevatedButton.icon(
             onPressed: _scanning ? null : _scan,
             icon: _scanning
-                ? const SizedBox(width: 18, height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
                 : const Icon(Icons.search, color: Colors.white),
-            label: Text(_scanning ? 'กำลังสแกน...' : 'สแกนหาอุปกรณ์',
+            label: Text(
+                _scanning ? 'กำลังสแกน...' : 'สแกนหาอุปกรณ์',
                 style: const TextStyle(color: Colors.white)),
             style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF43A047),
                 minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12))),
           ),
           const SizedBox(height: 12),
           ..._results.map((r) => ListTile(
-            leading: const Icon(Icons.devices_other, color: Color(0xFF43A047)),
-            title: Text(r.name, style: const TextStyle(color: Colors.white)),
-            subtitle: Text('สัญญาณ: ${r.rssi} dBm',
-                style: const TextStyle(color: Colors.white54, fontSize: 12)),
-            trailing: ElevatedButton(
-              onPressed: () => _connect(r),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF43A047),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-              child: const Text('เชื่อมต่อ', style: TextStyle(color: Colors.white)),
-            ),
-          )),
+                leading: const Icon(Icons.devices_other,
+                    color: Color(0xFF43A047)),
+                title: Text(r.name,
+                    style: const TextStyle(color: Colors.white)),
+                subtitle: Text('สัญญาณ: ${r.rssi} dBm',
+                    style: const TextStyle(
+                        color: Colors.white54, fontSize: 12)),
+                trailing: ElevatedButton(
+                  onPressed: () => _connect(r),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF43A047),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8))),
+                  child: const Text('เชื่อมต่อ',
+                      style: TextStyle(color: Colors.white)),
+                ),
+              )),
         ],
         const SizedBox(height: 8),
       ]),
@@ -791,8 +823,8 @@ class _MonitorPageState extends State<MonitorPage> {
   StreamSubscription? _dataSub;
   StreamSubscription? _sensorSub;
 
-  double _rawAngle = 0; // องศาดิบจาก sensor
-  double _displayAngle = 0; // องศาหลังลบ baseline
+  double _rawAngle = 0;
+  double _displayAngle = 0;
   String _postureStatus = 'กดเริ่มเพื่อเริ่มตรวจจับ';
   Color _postureColor = Colors.white54;
 
@@ -852,23 +884,29 @@ class _MonitorPageState extends State<MonitorPage> {
       _alertedThisEvent = false;
       _waitingDelay = true;
       setState(() {
-        _postureStatus = 'กำลังตรวจสอบ... (${angle.toStringAsFixed(0)}°)';
+        _postureStatus =
+            'กำลังตรวจสอบ... (${angle.toStringAsFixed(0)}°)';
         _postureColor = Colors.orange;
       });
       _delayTimer?.cancel();
-      _delayTimer = Timer(Duration(seconds: widget.delaySeconds), () {
+      _delayTimer =
+          Timer(Duration(seconds: widget.delaySeconds), () {
         if (_isBadPosture && !_alertedThisEvent && mounted) {
           _alertedThisEvent = true;
           setState(() {
             _badPostureCount++;
-            _postureStatus = 'เอียงผิดท่า! (${angle.toStringAsFixed(0)}°)';
+            _postureStatus =
+                'เอียงผิดท่า! (${angle.toStringAsFixed(0)}°)';
             _postureColor = const Color(0xFFE53935);
           });
           _triggerAlert();
           _repeatAlertTimer?.cancel();
-          _repeatAlertTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-            if (_isBadPosture && mounted) _triggerAlert();
-            else _repeatAlertTimer?.cancel();
+          _repeatAlertTimer =
+              Timer.periodic(const Duration(seconds: 10), (_) {
+            if (_isBadPosture && mounted)
+              _triggerAlert();
+            else
+              _repeatAlertTimer?.cancel();
           });
         }
         _waitingDelay = false;
@@ -885,7 +923,8 @@ class _MonitorPageState extends State<MonitorPage> {
       });
     } else if (badNow && _alertedThisEvent) {
       setState(() {
-        _postureStatus = 'เอียงผิดท่า! (${angle.toStringAsFixed(0)}°)';
+        _postureStatus =
+            'เอียงผิดท่า! (${angle.toStringAsFixed(0)}°)';
         _postureColor = const Color(0xFFE53935);
       });
     }
@@ -963,55 +1002,71 @@ class _MonitorPageState extends State<MonitorPage> {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: const Color(0xFF1A1A1A),
+          decoration: BoxDecoration(
+              color: const Color(0xFF1A1A1A),
               borderRadius: BorderRadius.circular(16)),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
             const Text('เลือกโหมดตรวจจับ',
-                style: TextStyle(color: Colors.white, fontSize: 16,
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             Row(children: [
-              Expanded(child: _modeButton(Icons.smartphone, 'เซ็นเซอร์\nมือถือ',
-                  !_useDevice, () => setState(() {
-                    _useDevice = false;
-                    widget.onUseDeviceChanged(false);
-                    if (_isActive) _startPhoneSensor();
-                  }))),
+              Expanded(child: _modeButton(
+                  Icons.smartphone, 'เซ็นเซอร์\nมือถือ', !_useDevice,
+                  () => setState(() {
+                        _useDevice = false;
+                        widget.onUseDeviceChanged(false);
+                        if (_isActive) _startPhoneSensor();
+                      }))),
               const SizedBox(width: 12),
-              Expanded(child: _modeButton(Icons.devices_other, 'อุปกรณ์\nSitWell',
-                  _useDevice, () => setState(() {
-                    _useDevice = true;
-                    widget.onUseDeviceChanged(true);
-                    _sensorSub?.cancel();
-                  }))),
+              Expanded(child: _modeButton(
+                  Icons.devices_other, 'อุปกรณ์\nSitWell', _useDevice,
+                  () => setState(() {
+                        _useDevice = true;
+                        widget.onUseDeviceChanged(true);
+                        _sensorSub?.cancel();
+                      }))),
             ]),
             if (_useDevice && widget.bleConnected) ...[
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(color: const Color(0xFF0D0D0D),
+                decoration: BoxDecoration(
+                    color: const Color(0xFF0D0D0D),
                     borderRadius: BorderRadius.circular(12)),
-                child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround,
+                child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                  _sensorVal('องศาดิบ', _rawAngle),
-                  _sensorVal('จาก baseline', _displayAngle),
-                ]),
+                      _sensorVal('องศาดิบ', _rawAngle),
+                      _sensorVal('จาก baseline', _displayAngle),
+                    ]),
               ),
             ],
             if (_useDevice && !widget.bleConnected)
               Container(
                 margin: const EdgeInsets.only(top: 12),
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: const Color(0xFF0D0D0D),
+                decoration: BoxDecoration(
+                    color: const Color(0xFF0D0D0D),
                     borderRadius: BorderRadius.circular(12)),
                 child: const Row(children: [
-                  Icon(Icons.bluetooth_disabled, color: Colors.white38, size: 20),
+                  Icon(Icons.bluetooth_disabled,
+                      color: Colors.white38, size: 20),
                   SizedBox(width: 8),
-                  Expanded(child: Text('ยังไม่ได้เชื่อมต่อ — กดไอคอนบลูทูธด้านบน',
-                      style: TextStyle(color: Colors.white38, fontSize: 12))),
+                  Expanded(
+                      child: Text(
+                          'ยังไม่ได้เชื่อมต่อ — กดไอคอนบลูทูธด้านบน',
+                          style: TextStyle(
+                              color: Colors.white38, fontSize: 12))),
                 ]),
               ),
           ]),
@@ -1026,29 +1081,39 @@ class _MonitorPageState extends State<MonitorPage> {
             color: const Color(0xFF1A1A1A),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-                color: _isActive ? _postureColor : Colors.transparent, width: 2),
+                color: _isActive ? _postureColor : Colors.transparent,
+                width: 2),
           ),
           child: Column(children: [
-            SizedBox(width: 120, height: 80,
+            SizedBox(
+                width: 120,
+                height: 80,
                 child: CustomPaint(painter: PostureIconPainter())),
             const SizedBox(height: 16),
             Text(_postureStatus,
                 style: TextStyle(color: _postureColor, fontSize: 18)),
             const SizedBox(height: 8),
-            Text('ดีเลย์: ${widget.delaySeconds} วิ | threshold: ${widget.effectiveThreshold.toStringAsFixed(0)}°',
-                style: const TextStyle(color: Colors.white38, fontSize: 12)),
+            Text(
+                'ดีเลย์: ${widget.delaySeconds} วิ | threshold: ${widget.effectiveThreshold.toStringAsFixed(0)}°',
+                style: const TextStyle(
+                    color: Colors.white38, fontSize: 12)),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _toggleMonitoring,
               style: ElevatedButton.styleFrom(
                 backgroundColor: _isActive
-                    ? const Color(0xFFE53935) : const Color(0xFF43A047),
-                padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+                    ? const Color(0xFFE53935)
+                    : const Color(0xFF43A047),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 48, vertical: 16),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(32)),
               ),
               child: Text(_isActive ? 'หยุด' : 'เริ่มตรวจจับ',
-                  style: const TextStyle(fontSize: 18,
-                      fontWeight: FontWeight.bold, color: Colors.white)),
+                  style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white)),
             ),
           ]),
         ),
@@ -1059,9 +1124,13 @@ class _MonitorPageState extends State<MonitorPage> {
           Expanded(child: _statCard('เวลาในเซสชัน',
               '$_sessionMinutes นาที', Icons.timer, Colors.white)),
           const SizedBox(width: 12),
-          Expanded(child: _statCard('เอียงผิดท่า',
-              '$_badPostureCount ครั้ง', Icons.warning_amber,
-              _badPostureCount > 0 ? const Color(0xFFE53935) : Colors.white)),
+          Expanded(child: _statCard(
+              'เอียงผิดท่า',
+              '$_badPostureCount ครั้ง',
+              Icons.warning_amber,
+              _badPostureCount > 0
+                  ? const Color(0xFFE53935)
+                  : Colors.white)),
         ]),
       ]),
     );
@@ -1070,43 +1139,67 @@ class _MonitorPageState extends State<MonitorPage> {
   Widget _sensorVal(String label, double val) {
     return Column(children: [
       Text('${val.toStringAsFixed(1)}°',
-          style: const TextStyle(color: Colors.white, fontSize: 18,
+          style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
               fontWeight: FontWeight.bold)),
-      Text(label, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+      Text(label,
+          style: const TextStyle(
+              color: Colors.white54, fontSize: 11)),
     ]);
   }
 
-  Widget _modeButton(IconData icon, String label, bool selected, VoidCallback onTap) {
+  Widget _modeButton(IconData icon, String label, bool selected,
+      VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFF2E7D32) : const Color(0xFF2A2A2A),
+          color: selected
+              ? const Color(0xFF2E7D32)
+              : const Color(0xFF2A2A2A),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: selected ? const Color(0xFF43A047) : Colors.transparent),
+          border: Border.all(
+              color: selected
+                  ? const Color(0xFF43A047)
+                  : Colors.transparent),
         ),
         child: Column(children: [
-          Icon(icon, color: selected ? Colors.white : Colors.white54, size: 32),
+          Icon(icon,
+              color: selected ? Colors.white : Colors.white54,
+              size: 32),
           const SizedBox(height: 8),
-          Text(label, textAlign: TextAlign.center,
-              style: TextStyle(color: selected ? Colors.white : Colors.white54, fontSize: 13)),
+          Text(label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: selected ? Colors.white : Colors.white54,
+                  fontSize: 13)),
         ]),
       ),
     );
   }
 
-  Widget _statCard(String label, String value, IconData icon, Color valueColor) {
+  Widget _statCard(String label, String value, IconData icon,
+      Color valueColor) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF1A1A1A),
+      decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.circular(16)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
         Icon(icon, color: Colors.white54, size: 20),
         const SizedBox(height: 8),
-        Text(value, style: TextStyle(color: valueColor, fontSize: 22,
-            fontWeight: FontWeight.bold)),
-        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        Text(value,
+            style: TextStyle(
+                color: valueColor,
+                fontSize: 22,
+                fontWeight: FontWeight.bold)),
+        Text(label,
+            style: const TextStyle(
+                color: Colors.white54, fontSize: 12)),
       ]),
     );
   }
@@ -1114,8 +1207,7 @@ class _MonitorPageState extends State<MonitorPage> {
 
 // ===== STATS PAGE =====
 class StatsPage extends StatefulWidget {
-  final DateTime refreshTime;
-  const StatsPage({super.key, required this.refreshTime});
+  const StatsPage({super.key});
   @override
   State<StatsPage> createState() => _StatsPageState();
 }
@@ -1127,47 +1219,34 @@ class _StatsPageState extends State<StatsPage> {
   List<double> _badsData = List.filled(24, 0);
   int _totalMinutes = 0;
   int _totalBadPosture = 0;
+  StreamSubscription? _statsSub;
 
   final List<String> _monthLabels = [
     'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
     'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
   ];
-  final List<String> _dayLabels = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
+  final List<String> _dayLabels = [
+    'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'
+  ];
 
   @override
   void initState() {
     super.initState();
-    // เข้ามาที่วัน → กระโดดไปสัปดาห์ → กลับมาวัน เร็วมากจนมองไม่เห็น
-    _tabIndex = 1;
-    _loadData().then((_) {
-      if (mounted) {
-        setState(() => _tabIndex = 0);
-        _loadData();
-      }
+    _loadData();
+    // ดักฟัง refreshStream — จะถูกเรียกทุกครั้งที่มีเซสชันใหม่
+    _statsSub = StatsService.refreshStream.listen((_) {
+      if (mounted) _loadData();
     });
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _loadData();
-  }
-
-  @override
-  void didUpdateWidget(StatsPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.refreshTime != widget.refreshTime) {
-      _loadData();
-    }
-  }
-
-  @override
-  void didUpdateWidget(StatsPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    _loadData();
+  void dispose() {
+    _statsSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
     setState(() => _loading = true);
     final totals = await StatsService.getTotals();
     Map<String, List<double>> data;
@@ -1189,14 +1268,16 @@ class _StatsPageState extends State<StatsPage> {
   }
 
   List<String> _getLabels() {
-    if (_tabIndex == 0) return List.generate(24, (i) => i % 4 == 0 ? '$i' : '');
+    if (_tabIndex == 0)
+      return List.generate(24, (i) => i % 4 == 0 ? '$i' : '');
     if (_tabIndex == 1) return _dayLabels;
     return _monthLabels;
   }
 
   String _getTitle() {
     final now = DateTime.now();
-    if (_tabIndex == 0) return 'วันที่ ${now.day}/${now.month}/${now.year + 543}';
+    if (_tabIndex == 0)
+      return 'วันที่ ${now.day}/${now.month}/${now.year + 543}';
     if (_tabIndex == 1) {
       final monday = now.subtract(Duration(days: now.weekday - 1));
       final sunday = monday.add(const Duration(days: 6));
@@ -1210,26 +1291,43 @@ class _StatsPageState extends State<StatsPage> {
     String hours = (_totalMinutes / 60).toStringAsFixed(1);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
         Container(
-          decoration: BoxDecoration(color: const Color(0xFF1A1A1A),
+          decoration: BoxDecoration(
+              color: const Color(0xFF1A1A1A),
               borderRadius: BorderRadius.circular(12)),
           child: Row(
-            children: ['วัน', 'อาทิตย์', 'เดือน'].asMap().entries.map((e) {
+            children: ['วัน', 'อาทิตย์', 'เดือน']
+                .asMap()
+                .entries
+                .map((e) {
               bool sel = _tabIndex == e.key;
               return Expanded(
                 child: GestureDetector(
-                  onTap: () { setState(() => _tabIndex = e.key); _loadData(); },
+                  onTap: () {
+                    setState(() => _tabIndex = e.key);
+                    _loadData();
+                  },
                   child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
-                      color: sel ? const Color(0xFF2E7D32) : Colors.transparent,
+                      color: sel
+                          ? const Color(0xFF2E7D32)
+                          : Colors.transparent,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Text(e.value, textAlign: TextAlign.center,
+                    child: Text(e.value,
+                        textAlign: TextAlign.center,
                         style: TextStyle(
-                            color: sel ? Colors.white : Colors.white54,
-                            fontWeight: sel ? FontWeight.bold : FontWeight.normal)),
+                            color: sel
+                                ? Colors.white
+                                : Colors.white54,
+                            fontWeight: sel
+                                ? FontWeight.bold
+                                : FontWeight.normal)),
                   ),
                 ),
               );
@@ -1237,8 +1335,10 @@ class _StatsPageState extends State<StatsPage> {
           ),
         ),
         const SizedBox(height: 8),
-        Center(child: Text(_getTitle(),
-            style: const TextStyle(color: Colors.white54, fontSize: 13))),
+        Center(
+            child: Text(_getTitle(),
+                style: const TextStyle(
+                    color: Colors.white54, fontSize: 13))),
         const SizedBox(height: 16),
         Row(children: [
           Expanded(child: _summaryCard('ชั่วโมงอ่าน', '$hours ชม.',
@@ -1250,50 +1350,79 @@ class _StatsPageState extends State<StatsPage> {
         ]),
         const SizedBox(height: 16),
         if (_loading)
-          const Center(child: CircularProgressIndicator(color: Color(0xFF43A047)))
+          const Center(
+              child: CircularProgressIndicator(
+                  color: Color(0xFF43A047)))
         else ...[
           _barChart(
-              _tabIndex == 0 ? 'ชั่วโมงอ่านรายชั่วโมง'
-                  : _tabIndex == 1 ? 'ชั่วโมงอ่านรายวัน' : 'ชั่วโมงอ่านรายเดือน',
-              _hoursData, _getLabels(), const Color(0xFF43A047), true),
+              _tabIndex == 0
+                  ? 'ชั่วโมงอ่านรายชั่วโมง'
+                  : _tabIndex == 1
+                      ? 'ชั่วโมงอ่านรายวัน'
+                      : 'ชั่วโมงอ่านรายเดือน',
+              _hoursData,
+              _getLabels(),
+              const Color(0xFF43A047),
+              true),
           const SizedBox(height: 16),
           _barChart(
-              _tabIndex == 0 ? 'ครั้งที่เอียงผิดท่ารายชั่วโมง'
-                  : _tabIndex == 1 ? 'ครั้งที่เอียงผิดท่ารายวัน' : 'ครั้งที่เอียงผิดท่ารายเดือน',
-              _badsData, _getLabels(), const Color(0xFFE53935), false),
+              _tabIndex == 0
+                  ? 'ครั้งที่เอียงผิดท่ารายชั่วโมง'
+                  : _tabIndex == 1
+                      ? 'ครั้งที่เอียงผิดท่ารายวัน'
+                      : 'ครั้งที่เอียงผิดท่ารายเดือน',
+              _badsData,
+              _getLabels(),
+              const Color(0xFFE53935),
+              false),
         ],
       ]),
     );
   }
 
-  Widget _summaryCard(String label, String value, IconData icon, Color color) {
+  Widget _summaryCard(String label, String value, IconData icon,
+      Color color) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF1A1A1A),
+      decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.circular(16)),
       child: Row(children: [
         Icon(icon, color: color, size: 32),
         const SizedBox(width: 12),
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(value, style: const TextStyle(color: Colors.white,
-              fontSize: 20, fontWeight: FontWeight.bold)),
-          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+          Text(value,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold)),
+          Text(label,
+              style: const TextStyle(
+                  color: Colors.white54, fontSize: 12)),
         ]),
       ]),
     );
   }
 
-  Widget _barChart(String title, List<double> data, List<String> labels,
-      Color color, bool showVal) {
+  Widget _barChart(String title, List<double> data,
+      List<String> labels, Color color, bool showVal) {
     double maxVal = data.isEmpty ? 1 : data.reduce(max);
     if (maxVal == 0) maxVal = 1;
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF1A1A1A),
+      decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.circular(16)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: const TextStyle(color: Colors.white,
-            fontSize: 14, fontWeight: FontWeight.bold)),
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+        Text(title,
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
         SizedBox(
           height: 140,
@@ -1303,21 +1432,31 @@ class _StatsPageState extends State<StatsPage> {
               double ratio = data[i] / maxVal;
               return Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 2),
+                  child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
                     if (showVal && data[i] > 0)
                       Text(data[i].toStringAsFixed(1),
-                          style: const TextStyle(color: Colors.white54, fontSize: 8)),
+                          style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 8)),
                     const SizedBox(height: 2),
                     Container(
                       height: ratio > 0 ? 110 * ratio : 2,
                       decoration: BoxDecoration(
-                          color: color.withOpacity(ratio > 0 ? 1 : 0.15),
-                          borderRadius: BorderRadius.circular(3)),
+                          color: color.withOpacity(
+                              ratio > 0 ? 1 : 0.15),
+                          borderRadius:
+                              BorderRadius.circular(3)),
                     ),
                     const SizedBox(height: 4),
-                    Text(i < labels.length ? labels[i] : '',
-                        style: const TextStyle(color: Colors.white54, fontSize: 9)),
+                    Text(
+                        i < labels.length ? labels[i] : '',
+                        style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 9)),
                   ]),
                 ),
               );
@@ -1411,7 +1550,9 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
         _label('โหมดตั้งค่าการแจ้งเตือน'),
         _modeSelector(),
         const SizedBox(height: 16),
@@ -1429,13 +1570,16 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _label(String text) => Padding(
-    padding: const EdgeInsets.only(bottom: 8),
-    child: Text(text, style: const TextStyle(color: Colors.white70, fontSize: 13)),
-  );
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(text,
+            style: const TextStyle(
+                color: Colors.white70, fontSize: 13)),
+      );
 
   Widget _modeSelector() {
     return Container(
-      decoration: BoxDecoration(color: const Color(0xFF1A1A1A),
+      decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.circular(12)),
       child: Row(children: [
         _modeTab(0, Icons.tune, 'กำหนดองศา'),
@@ -1448,18 +1592,26 @@ class _SettingsPageState extends State<SettingsPage> {
     bool sel = _alertMode == index;
     return Expanded(
       child: GestureDetector(
-        onTap: () { setState(() => _alertMode = index); _save(); },
+        onTap: () {
+          setState(() => _alertMode = index);
+          _save();
+        },
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: sel ? const Color(0xFF2E7D32) : Colors.transparent,
+            color: sel
+                ? const Color(0xFF2E7D32)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(children: [
-            Icon(icon, color: sel ? Colors.white : Colors.white54),
+            Icon(icon,
+                color: sel ? Colors.white : Colors.white54),
             const SizedBox(height: 4),
-            Text(label, style: TextStyle(
-                color: sel ? Colors.white : Colors.white54, fontSize: 13)),
+            Text(label,
+                style: TextStyle(
+                    color: sel ? Colors.white : Colors.white54,
+                    fontSize: 13)),
           ]),
         ),
       ),
@@ -1469,73 +1621,99 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _modeACard() {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF1A1A1A),
+      decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.circular(16)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+        Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
           const Text('องศาที่แจ้งเตือน',
               style: TextStyle(color: Colors.white, fontSize: 16)),
           Text('${_tiltThreshold.round()}°',
-              style: const TextStyle(color: Color(0xFF43A047),
-                  fontSize: 22, fontWeight: FontWeight.bold)),
+              style: const TextStyle(
+                  color: Color(0xFF43A047),
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold)),
         ]),
         Slider(
-          value: _tiltThreshold, min: 5, max: 60, divisions: 55,
-          activeColor: const Color(0xFF43A047), inactiveColor: Colors.white24,
-          onChanged: (v) { setState(() => _tiltThreshold = v); _save(); },
+          value: _tiltThreshold,
+          min: 5,
+          max: 60,
+          divisions: 55,
+          activeColor: const Color(0xFF43A047),
+          inactiveColor: Colors.white24,
+          onChanged: (v) {
+            setState(() => _tiltThreshold = v);
+            _save();
+          },
         ),
         const Text('ถ้าเอียงเกินองศานี้จะมีการแจ้งเตือน',
-            style: TextStyle(color: Colors.white54, fontSize: 12)),
+            style:
+                TextStyle(color: Colors.white54, fontSize: 12)),
       ]),
     );
   }
 
   Widget _modeBCard() {
-    // กำหนดว่ากำลังใช้ค่าของมือถือหรืออุปกรณ์
-    double goodAngle = widget.useDevice ? _goodAngleDevice : _goodAnglePhone;
-    double badAngle = widget.useDevice ? _badAngleDevice : _badAnglePhone;
+    double goodAngle =
+        widget.useDevice ? _goodAngleDevice : _goodAnglePhone;
+    double badAngle =
+        widget.useDevice ? _badAngleDevice : _badAnglePhone;
     bool goodSaved = goodAngle >= 0;
     bool badSaved = badAngle >= 0;
     bool bothSaved = goodSaved && badSaved;
-    String source = widget.useDevice ? 'อุปกรณ์ SitWell' : 'เซ็นเซอร์มือถือ';
+    String source =
+        widget.useDevice ? 'อุปกรณ์ SitWell' : 'เซ็นเซอร์มือถือ';
 
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF1A1A1A),
+      decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.circular(16)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
         const Text('บันทึกท่านั่ง',
-            style: TextStyle(color: Colors.white, fontSize: 16,
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
                 fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
         Text('ใช้: $source',
-            style: const TextStyle(color: Colors.white54, fontSize: 12)),
+            style: const TextStyle(
+                color: Colors.white54, fontSize: 12)),
         const SizedBox(height: 12),
-
-        // องศาปัจจุบัน
         Container(
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: const Color(0xFF0D0D0D),
+          decoration: BoxDecoration(
+              color: const Color(0xFF0D0D0D),
               borderRadius: BorderRadius.circular(8)),
-          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            const Icon(Icons.straighten, color: Colors.white54, size: 16),
+          child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+            const Icon(Icons.straighten,
+                color: Colors.white54, size: 16),
             const SizedBox(width: 8),
-            Text('องศาปัจจุบัน: ${widget.currentRawAngle.toStringAsFixed(1)}°',
-                style: const TextStyle(color: Colors.white, fontSize: 14,
+            Text(
+                'องศาปัจจุบัน: ${widget.currentRawAngle.toStringAsFixed(1)}°',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
                     fontWeight: FontWeight.bold)),
           ]),
         ),
-
         if (!widget.useDevice)
           const Padding(
             padding: EdgeInsets.only(top: 8),
-            child: Text('⚠ ต้องกด "เริ่มตรวจจับ" ก่อนถึงจะอ่านค่าเซ็นเซอร์มือถือได้',
-                style: TextStyle(color: Colors.orange, fontSize: 11)),
+            child: Text(
+                '⚠ ต้องกด "เริ่มตรวจจับ" ก่อนถึงจะอ่านค่าเซ็นเซอร์มือถือได้',
+                style: TextStyle(
+                    color: Colors.orange, fontSize: 11)),
           ),
-
         const SizedBox(height: 16),
-
-        // ท่าดี
         _postureBtn(
           isGood: true,
           saved: goodSaved,
@@ -1549,17 +1727,15 @@ class _SettingsPageState extends State<SettingsPage> {
               }
             });
             _save();
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            ScaffoldMessenger.of(context)
+                .showSnackBar(const SnackBar(
               content: Text('✓ บันทึกท่านั่งดีแล้ว (= 0°)'),
               backgroundColor: Color(0xFF43A047),
               duration: Duration(seconds: 2),
             ));
           },
         ),
-
         const SizedBox(height: 12),
-
-        // ท่าไม่ดี
         _postureBtn(
           isGood: false,
           saved: badSaved,
@@ -1573,15 +1749,14 @@ class _SettingsPageState extends State<SettingsPage> {
               }
             });
             _save();
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            ScaffoldMessenger.of(context)
+                .showSnackBar(const SnackBar(
               content: Text('✓ บันทึกท่านั่งไม่ดีแล้ว'),
               backgroundColor: Color(0xFFE53935),
               duration: Duration(seconds: 2),
             ));
           },
         ),
-
-        // สถานะพร้อมใช้
         if (bothSaved) ...[
           const SizedBox(height: 12),
           Container(
@@ -1589,14 +1764,20 @@ class _SettingsPageState extends State<SettingsPage> {
             decoration: BoxDecoration(
               color: const Color(0xFF2E7D32).withOpacity(0.2),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF43A047).withOpacity(0.4)),
+              border: Border.all(
+                  color:
+                      const Color(0xFF43A047).withOpacity(0.4)),
             ),
             child: Row(children: [
-              const Icon(Icons.check_circle, color: Color(0xFF43A047), size: 18),
+              const Icon(Icons.check_circle,
+                  color: Color(0xFF43A047), size: 18),
               const SizedBox(width: 8),
-              Expanded(child: Text(
-                  'พร้อมใช้งาน! threshold = ${(badAngle - goodAngle).abs().toStringAsFixed(0)}°',
-                  style: const TextStyle(color: Color(0xFF81C784), fontSize: 12))),
+              Expanded(
+                  child: Text(
+                      'พร้อมใช้งาน! threshold = ${(badAngle - goodAngle).abs().toStringAsFixed(0)}°',
+                      style: const TextStyle(
+                          color: Color(0xFF81C784),
+                          fontSize: 12))),
             ]),
           ),
         ],
@@ -1610,38 +1791,61 @@ class _SettingsPageState extends State<SettingsPage> {
     required double savedAngle,
     required VoidCallback onSave,
   }) {
-    Color color = isGood ? const Color(0xFF43A047) : const Color(0xFFE53935);
+    Color color = isGood
+        ? const Color(0xFF43A047)
+        : const Color(0xFFE53935);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: saved ? color.withOpacity(0.1) : const Color(0xFF2A2A2A),
+        color: saved
+            ? color.withOpacity(0.1)
+            : const Color(0xFF2A2A2A),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: saved ? color : Colors.white12),
+        border:
+            Border.all(color: saved ? color : Colors.white12),
       ),
       child: Row(children: [
-        Icon(isGood ? Icons.check_circle_outline : Icons.warning_amber_outlined,
-            color: color, size: 32),
+        Icon(
+            isGood
+                ? Icons.check_circle_outline
+                : Icons.warning_amber_outlined,
+            color: color,
+            size: 32),
         const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-          Text(isGood ? '① ท่านั่งดี (= 0°)' : '② ท่านั่งไม่ดี (threshold)',
-              style: TextStyle(color: saved ? color : Colors.white,
-                  fontWeight: FontWeight.bold)),
-          Text(saved
-              ? '✓ บันทึกแล้ว (${savedAngle.toStringAsFixed(0)}°)'
-              : (isGood ? 'นั่งตรงที่สุด แล้วกดบันทึก'
-                  : 'นั่งเอียงที่สุดที่ยอมรับได้ แล้วกดบันทึก'),
+        Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+          Text(
+              isGood
+                  ? '① ท่านั่งดี (= 0°)'
+                  : '② ท่านั่งไม่ดี (threshold)',
               style: TextStyle(
-                  color: saved ? color.withOpacity(0.7) : Colors.white54,
+                  color: saved ? color : Colors.white,
+                  fontWeight: FontWeight.bold)),
+          Text(
+              saved
+                  ? '✓ บันทึกแล้ว (${savedAngle.toStringAsFixed(0)}°)'
+                  : (isGood
+                      ? 'นั่งตรงที่สุด แล้วกดบันทึก'
+                      : 'นั่งเอียงที่สุดที่ยอมรับได้ แล้วกดบันทึก'),
+              style: TextStyle(
+                  color: saved
+                      ? color.withOpacity(0.7)
+                      : Colors.white54,
                   fontSize: 12)),
         ])),
         ElevatedButton(
           onPressed: onSave,
-          style: ElevatedButton.styleFrom(backgroundColor: color,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+          style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 8)),
           child: Text(saved ? 'บันทึกใหม่' : 'บันทึก',
-              style: const TextStyle(color: Colors.white, fontSize: 13)),
+              style: const TextStyle(
+                  color: Colors.white, fontSize: 13)),
         ),
       ]),
     );
@@ -1650,23 +1854,38 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _delayCard() {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF1A1A1A),
+      decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.circular(16)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+        Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
           const Text('ดีเลย์ก่อนแจ้งเตือน',
               style: TextStyle(color: Colors.white, fontSize: 16)),
           Text('$_delaySeconds วิ',
-              style: const TextStyle(color: Color(0xFF43A047),
-                  fontSize: 22, fontWeight: FontWeight.bold)),
+              style: const TextStyle(
+                  color: Color(0xFF43A047),
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold)),
         ]),
         Slider(
-          value: _delaySeconds.toDouble(), min: 1, max: 30, divisions: 29,
-          activeColor: const Color(0xFF43A047), inactiveColor: Colors.white24,
-          onChanged: (v) { setState(() => _delaySeconds = v.round()); _save(); },
+          value: _delaySeconds.toDouble(),
+          min: 1,
+          max: 30,
+          divisions: 29,
+          activeColor: const Color(0xFF43A047),
+          inactiveColor: Colors.white24,
+          onChanged: (v) {
+            setState(() => _delaySeconds = v.round());
+            _save();
+          },
         ),
         const Text('ต้องเอียงนานกว่านี้ถึงจะนับและแจ้งเตือน',
-            style: TextStyle(color: Colors.white54, fontSize: 12)),
+            style:
+                TextStyle(color: Colors.white54, fontSize: 12)),
       ]),
     );
   }
@@ -1674,16 +1893,28 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _alertToggles() {
     return Container(
       padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: const Color(0xFF1A1A1A),
+      decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.circular(16)),
       child: Column(children: [
-        _toggle(Icons.volume_up, 'เสียงแจ้งเตือน (พูดว่า "ปรับท่านั่ง")',
-            _soundAlert, (v) { setState(() => _soundAlert = v); _save(); }),
+        _toggle(
+            Icons.volume_up,
+            'เสียงแจ้งเตือน (พูดว่า "ปรับท่านั่ง")',
+            _soundAlert,
+            (v) {
+              setState(() => _soundAlert = v);
+              _save();
+            }),
         _toggle(Icons.vibration, 'การสั่น', _vibrationAlert,
-            (v) { setState(() => _vibrationAlert = v); _save(); }),
+            (v) {
+          setState(() => _vibrationAlert = v);
+          _save();
+        }),
         _toggle(Icons.lightbulb_outline, 'ไฟ LED ที่อุปกรณ์ SitWell',
-            _deviceLedAlert,
-            (v) { setState(() => _deviceLedAlert = v); _save(); }),
+            _deviceLedAlert, (v) {
+          setState(() => _deviceLedAlert = v);
+          _save();
+        }),
       ]),
     );
   }
@@ -1692,8 +1923,10 @@ class _SettingsPageState extends State<SettingsPage> {
       ValueChanged<bool> onChanged) {
     return SwitchListTile(
       secondary: Icon(icon, color: Colors.white54),
-      title: Text(label, style: const TextStyle(color: Colors.white)),
-      value: value, onChanged: onChanged,
+      title: Text(label,
+          style: const TextStyle(color: Colors.white)),
+      value: value,
+      onChanged: onChanged,
       activeColor: const Color(0xFF43A047),
     );
   }
