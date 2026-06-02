@@ -535,7 +535,7 @@ class _HomeScreenState extends State<HomeScreen> {
         onUseDeviceChanged: _onUseDeviceChanged,
         onRawAngleChanged: _onRawAngleChanged,
       ),
-      const StatsPage(),
+      StatsPage(key: UniqueKey()),
       SettingsPage(
         tiltThreshold: _tiltThreshold,
         delaySeconds: _delaySeconds,
@@ -583,7 +583,23 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: IndexedStack(index: _currentIndex, children: pages),
+      @override
+  void initState() {
+    super.initState();
+    // เข้ามาที่วัน → กระโดดไปสัปดาห์ → กลับมาวัน เร็วมากจนมองไม่เห็น
+    _tabIndex = 1;
+    _loadData().then((_) {
+      if (mounted) {
+        setState(() => _tabIndex = 0);
+        _loadData();
+      }
+    });body: _currentIndex == 1
+          ? const StatsPage()
+          : IndexedStack(
+              index: _currentIndex == 0 ? 0 : 1,
+              children: [pages[0], pages[2]],
+            ),
+  }
       bottomNavigationBar: NavigationBar(
         backgroundColor: const Color(0xFF1A1A1A),
         selectedIndex: _currentIndex,
@@ -1098,7 +1114,8 @@ class _MonitorPageState extends State<MonitorPage> {
 
 // ===== STATS PAGE =====
 class StatsPage extends StatefulWidget {
-  const StatsPage({super.key});
+  final DateTime refreshTime;
+  const StatsPage({super.key, required this.refreshTime});
   @override
   State<StatsPage> createState() => _StatsPageState();
 }
@@ -1120,12 +1137,33 @@ class _StatsPageState extends State<StatsPage> {
   @override
   void initState() {
     super.initState();
-    _loadData();
+    // เข้ามาที่วัน → กระโดดไปสัปดาห์ → กลับมาวัน เร็วมากจนมองไม่เห็น
+    _tabIndex = 1;
+    _loadData().then((_) {
+      if (mounted) {
+        setState(() => _tabIndex = 0);
+        _loadData();
+      }
+    });
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _loadData();
+  }
+
+  @override
+  void didUpdateWidget(StatsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshTime != widget.refreshTime) {
+      _loadData();
+    }
+  }
+
+  @override
+  void didUpdateWidget(StatsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
     _loadData();
   }
 
